@@ -1,20 +1,76 @@
-<<<<<<< HEAD
-# mess_app
+📌 Prerequisites:
+Your friend must have installed:
 
-A new Flutter project.
+Flutter SDK
 
-## Getting Started
+Android Studio or VS Code
 
-This project is a starting point for a Flutter application.
+Git
 
-A few resources to get you started if this is your first Flutter project:
+Java JDK 17+
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Android SDK (with ndk;23.1.7779620 if your project uses native C++)
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-=======
-# mess_app
->>>>>>> 8ebc7690b3d8093e06e01a20594aaf33dbabda4b
+🔁 STEP 1: Fork the Repository
+Go to your GitHub repository in a browser.
+
+Click on the "Fork" button (top-right).
+
+GitHub will create a copy of your repo under your friend's account.
+
+💻 STEP 2: Clone the Forked Repository
+Open a terminal and run:
+
+bash
+Copy
+Edit
+git clone https://github.com/<friend-username>/<your-repo-name>.git
+cd <your-repo-name>
+🔧 STEP 3: Set Up Flutter
+Run these commands to set up the project:
+
+bash
+Copy
+Edit
+flutter pub get         # Downloads dependencies
+flutter doctor          # Checks environment
+If flutter doctor reports issues, resolve them (especially Android SDK and JDK).
+
+🧹 STEP 4: Clean and Prepare
+bash
+Copy
+Edit
+flutter clean           # Cleans previous builds
+flutter pub get         # Again, just to ensure dependencies are in place
+⚙️ STEP 5: Set NDK (if needed)
+If your project needs NDK:
+
+In Android Studio:
+
+Go to File > Settings > SDK Tools
+
+Check NDK (Side by Side)
+
+Click Show Package Details
+
+Check 23.1.7779620 and Apply
+
+In android/build.gradle.kts, ensure this is added:
+
+kotlin
+Copy
+Edit
+android {
+    ndkVersion = "23.1.7779620"
+}
+If the project does NOT use C++ or native libraries, just comment out or remove NDK-related code in build.gradle.kts.
+
+📱 STEP 6: Run the App on a Device
+Connect an Android phone with USB Debugging enabled, or start an Android emulator.
+
+Then run:
+
+bash
+Copy
+Edit
+flutter run
