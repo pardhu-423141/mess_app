@@ -1,5 +1,4 @@
-📌 Prerequisites:
-Your friend must have installed:
+
 
 Flutter SDK
 
