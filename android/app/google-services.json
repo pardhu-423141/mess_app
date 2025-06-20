@@ -12,7 +12,20 @@
           "package_name": "com.example.mess_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "276793636798-tnd1fiijvk4kdnn008vqg85v9r2eloqa.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.mess_app",
+            "certificate_hash": "33759ea8a5a98df40d6f925e045d64bf017ed2dc"
+          }
+        },
+        {
+          "client_id": "276793636798-9seop04hkcbejp2r99afhefrq76f60u5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAGHpny52CnQdvqIe1vL3hWHoh_dZ_e9d0"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "276793636798-9seop04hkcbejp2r99afhefrq76f60u5.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "276793636798-nrfner1d31kki77oml6ujfne0pak0qpk.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.messApp"
+              }
+            }
+          ]
         }
       }
     }
