@@ -106,7 +106,7 @@ class _FirestoreCheckPageState extends State<FirestoreCheckPage> {
   }
 }*/
 
-import 'dart:async';
+/*import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -222,4 +222,263 @@ class _SplashToSignInScreenState extends State<SplashToSignInScreen> {
     );
   }
 }
+*/
 
+/*import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'firebase_options.dart';
+
+import 'screens/admin_dashboard.dart';
+import 'screens/employee_dashboard.dart';
+import 'screens/student_dashboard.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Firebase Auth Role App',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: const SplashToSignInScreen(),
+    );
+  }
+}
+
+class SplashToSignInScreen extends StatefulWidget {
+  const SplashToSignInScreen({super.key});
+  @override
+  State<SplashToSignInScreen> createState() => _SplashToSignInScreenState();
+}
+
+class _SplashToSignInScreenState extends State<SplashToSignInScreen> {
+  bool _showImage = true;
+  bool _showButton = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        navigateBasedOnRole(user);
+      });
+    } else {
+      Future.delayed(const Duration(seconds: 3), () {
+        if (!mounted) return;
+        setState(() => _showImage = false);
+        Future.delayed(const Duration(seconds: 1), () {
+          if (!mounted) return;
+          setState(() => _showButton = true);
+        });
+      });
+    }
+  }
+
+  Future<void> createUserIfNotExists(User user) async {
+    final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final doc = await docRef.get();
+    if (!doc.exists) {
+      final check_email= RegExp(r'@student.nitandhra.ac.in$');
+      final email = user.email ?? '';
+      if (check_email.hasMatch(email)){
+        await docRef.set({
+          'name': user.displayName ?? '',
+          'email': user.email,
+          'role': 'regular', // default role
+        });
+      }else{
+        await docRef.set({
+          'name': user.displayName ?? '',
+          'email': user.email,
+          'role': 'guest', // default role
+        });
+      }
+      
+    }
+  }
+
+  Future<void> navigateBasedOnRole(User user) async {
+    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    final role = doc.data()?['role'];
+
+    if (!mounted) return;
+
+    switch (role) {
+      case 'admin':
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboard()));
+        break;
+      case 'employee':
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const EmployeeDashboard()));
+        break;
+      case 'regular':
+      case 'guest':
+      default:
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const StudentDashboard()));
+        break;
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    try {
+      final googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) return;
+
+      final googleAuth = await googleUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCredential.user;
+
+      if (user != null) {
+        await createUserIfNotExists(user);
+        await navigateBasedOnRole(user);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error signing in: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            AnimatedOpacity(
+              opacity: _showImage ? 1.0 : 0.0,
+              duration: const Duration(seconds: 1),
+              child: Image.asset('assets/NIT_Andhra_Pradesh.png', width: 200),
+            ),
+            if (_showButton)
+              ElevatedButton.icon(
+                icon: const Icon(Icons.login),
+                label: const Text('Sign in with Google'),
+                onPressed: _signInWithGoogle,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+*/
+
+
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import 'firebase_options.dart';
+import 'login_page.dart';
+import 'screens/admin_dashboard.dart';
+import 'screens/employee_dashboard.dart';
+import 'screens/student_dashboard.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Firebase Auth Role App',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: const SplashToSignInScreen(),
+    );
+  }
+}
+
+class SplashToSignInScreen extends StatefulWidget {
+  const SplashToSignInScreen({super.key});
+
+  @override
+  State<SplashToSignInScreen> createState() => _SplashToSignInScreenState();
+}
+
+class _SplashToSignInScreenState extends State<SplashToSignInScreen> {
+  @override
+  void initState() {
+    super.initState();
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        navigateBasedOnRole(user);
+      });
+    } else {
+      Future.delayed(const Duration(seconds: 3), () {
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+        );
+      });
+    }
+  }
+
+  Future<void> navigateBasedOnRole(User user) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    final role = doc.data()?['role'];
+
+    if (!mounted) return;
+
+    switch (role) {
+      case 'admin':
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (_) => const AdminDashboard()));
+        break;
+      case 'employee':
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (_) => const EmployeeDashboard()));
+        break;
+      case 'regular':
+      case 'guest':
+      default:
+        Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (_) => const StudentDashboard()));
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: AnimatedOpacity(
+          opacity: 1.0,
+          duration: const Duration(seconds: 1),
+          child: Image.asset('assets/NIT_Andhra_Pradesh.png', width: 200),
+        ),
+      ),
+    );
+  }
+}
