@@ -3,9 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'screens/admin_dashboard.dart';
-import 'screens/employee_dashboard.dart';
-import 'screens/student_dashboard.dart';
+import 'admin/admin_dashboard.dart';
+import 'employee/employee_dashboard.dart';
+import 'student/student_dashboard.dart';
 
 class LoginPage extends StatelessWidget {
   const LoginPage({super.key});

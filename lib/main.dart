@@ -390,9 +390,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase_options.dart';
 import 'login_page.dart';
-import 'screens/admin_dashboard.dart';
-import 'screens/employee_dashboard.dart';
-import 'screens/student_dashboard.dart';
+import 'admin/admin_dashboard.dart';
+import 'employee/employee_dashboard.dart';
+import 'student/student_dashboard.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
