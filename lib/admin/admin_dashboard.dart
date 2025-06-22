@@ -80,7 +80,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     final name = user?.displayName ?? 'Admin';
-
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin Dashboard'),

@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'admin/admin_dashboard.dart';
+import 'manager/manager_dashboard.dart';
 import 'employee/employee_dashboard.dart';
 import 'student/student_dashboard.dart';
 
@@ -39,6 +40,9 @@ class LoginPage extends StatelessWidget {
     switch (role) {
       case 'admin':
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboard()));
+        break;
+      case 'manager':
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const ManagerDashboard()));
         break;
       case 'employee':
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const EmployeeDashboard()));
