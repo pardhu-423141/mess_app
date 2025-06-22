@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../login_page.dart';
+import '../manager/general_menu_viewer.dart';
 
 class ManagerDashboard extends StatefulWidget {
   const ManagerDashboard({super.key});
@@ -176,22 +177,17 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
     );
   }
 
-  Widget _buildGeneralMenuPage() {
-    return Center(
-      child: ElevatedButton.icon(
-        icon: const Icon(Icons.edit),
-        label: const Text("Update General Menu"),
-        onPressed: () => Navigator.pushNamed(context, '/update_general_menu'),
-      ),
-    );
-  }
+  Widget _buildGeneralMenuPage(BuildContext context) {
+    return const GeneralMenuViewerPage();
+}
+
 
   @override
   Widget build(BuildContext context) {
     final pages = [
       _buildHomePage(context),
       _buildExtraMenuPage(),
-      _buildGeneralMenuPage(),
+      _buildGeneralMenuPage(context),
       _buildAnalyticsPage(),
       _buildProfilePage(),
       
@@ -202,7 +198,11 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
       body: pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
+        onTap: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Colors.blue,
         unselectedItemColor: Colors.grey,

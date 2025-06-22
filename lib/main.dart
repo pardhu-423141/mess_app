@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:mess_app/manager/general_menu_viewer.dart';
+import 'package:mess_app/student/cart_page.dart';
 
 import 'firebase_options.dart';
 import 'login_page.dart';
@@ -42,6 +44,15 @@ class MyApp extends StatelessWidget {
         '/student-dashboard': (context) => const StudentDashboard(),
         '/add_extra_menu': (context) => const AddExtraMenuPage(),
         '/update_general_menu':(context) => const UpdateGeneralMenuPage(),
+        '/general_menu_viewer': (context) => const GeneralMenuViewerPage(),
+        '/cart': (context) {
+    // Extract the route arguments
+          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+          return CartPage(
+            cart: args['cart'],
+            onCartUpdated: args['onCartUpdated'],
+          );
+        },
       },
     );
   }
@@ -61,10 +72,12 @@ class _SplashToSignInScreenState extends State<SplashToSignInScreen> {
 
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
+      // User is already logged in, navigate based on role
       WidgetsBinding.instance.addPostFrameCallback((_) {
         navigateBasedOnRole(user);
       });
     } else {
+      // No user logged in, show splash for 3 seconds then go to login
       Future.delayed(const Duration(seconds: 3), () {
         if (!mounted) return;
         Navigator.pushReplacement(
@@ -76,29 +89,81 @@ class _SplashToSignInScreenState extends State<SplashToSignInScreen> {
   }
 
   Future<void> navigateBasedOnRole(User user) async {
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
-    final role = doc.data()?['role'];
+    final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final docSnapshot = await userRef.get();
+    final data = docSnapshot.data();
+    final role = data?['role'];
 
     if (!mounted) return;
 
-    switch (role) {
-      case 'admin':
-        Navigator.pushReplacementNamed(context, '/admin-dashboard');
-        break;
-      case 'manager':
-        Navigator.pushReplacementNamed(context, '/manager-dashboard');
-        break;
-      case 'employee':
-        Navigator.pushReplacementNamed(context, '/employee-dashboard');
-        break;
-      case 'regular':
-      case 'guest':
-      default:
-        Navigator.pushReplacementNamed(context, '/student-dashboard');
-        break;
+    if (role == 'regular') {
+      if (!data!.containsKey('Sex')) {
+        // Show popup to select sex, wait for user to choose
+        final selectedSex = await showDialog<int>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) {
+            return AlertDialog(
+              title: const Text("Select Your Hostel"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Text(
+                    "⚠️ Please choose your hostel type carefully. "
+                    "If entered incorrectly, you must visit the hostel office to change it.",
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  SizedBox(height: 16),
+                  Text("Are you a Boys or Girls hostel student?"),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context, 1); // Boys = 1
+                  },
+                  child: const Text("Boys"),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context, 0); // Girls = 0
+                  },
+                  child: const Text("Girls"),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (selectedSex != null) {
+          await userRef.update({'Sex': selectedSex});
+          // Small delay to ensure Firestore update is done before navigation
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
+      Navigator.pushReplacementNamed(context, '/student-dashboard');
+    } else if (role == 'guest') {
+      if (!data!.containsKey('Sex')) {
+        await userRef.update({'Sex': 1});
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      Navigator.pushReplacementNamed(context, '/student-dashboard');
+    } else {
+      // For admin/manager/employee roles
+      switch (role) {
+        case 'admin':
+          Navigator.pushReplacementNamed(context, '/admin-dashboard');
+          break;
+        case 'manager':
+          Navigator.pushReplacementNamed(context, '/manager-dashboard');
+          break;
+        case 'employee':
+          Navigator.pushReplacementNamed(context, '/employee-dashboard');
+          break;
+        default:
+          Navigator.pushReplacementNamed(context, '/login');
+          break;
+      }
     }
   }
 
