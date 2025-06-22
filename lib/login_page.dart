@@ -34,24 +34,81 @@ class LoginPage extends StatelessWidget {
   }
 
   Future<void> navigateBasedOnRole(BuildContext context, User user) async {
-    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-    final role = doc.data()?['role'];
-    if (!context.mounted) return; 
-    switch (role) {
-      case 'admin':
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboard()));
-        break;
-      case 'manager':
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const ManagerDashboard()));
-        break;
-      case 'employee':
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const EmployeeDashboard()));
-        break;
-      case 'regular':
-      case 'guest':
-      default:
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const StudentDashboard()));
-        break;
+    final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final docSnapshot = await userRef.get();
+    final data = docSnapshot.data();
+    final role = data?['role'];
+
+    if (!context.mounted) return;
+
+    if (role == 'regular') {
+      if (!data!.containsKey('Sex')) {
+        // Show popup to select sex, wait for user to choose
+        final selectedSex = await showDialog<int>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) {
+            return AlertDialog(
+              title: const Text("Select Your Hostel"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Text(
+                    "⚠️ Please choose your hostel type carefully. "
+                    "If entered incorrectly, you must visit the hostel office to change it.",
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  SizedBox(height: 16),
+                  Text("Are you a Boys or Girls hostel student?"),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context, 1); // Boys = 1
+                  },
+                  child: const Text("Boys"),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context, 0); // Girls = 0
+                  },
+                  child: const Text("Girls"),
+                ),
+              ],
+            );
+          },
+        );
+
+        if (selectedSex != null) {
+          await userRef.update({'Sex': selectedSex});
+          // Small delay to ensure Firestore update is done before navigation
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const StudentDashboard()));
+    } else if (role == 'guest') {
+      if (!data!.containsKey('Sex')) {
+        await userRef.update({'Sex': 1});
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const StudentDashboard()));
+    } else {
+      // For admin/manager/employee roles
+      switch (role) {
+        case 'admin':
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboard()));
+          break;
+        case 'manager':
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const ManagerDashboard()));
+          break;
+        case 'employee':
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const EmployeeDashboard()));
+          break;
+        default:
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const StudentDashboard()));
+          break;
+      }
     }
   }
 
