@@ -1,322 +1,525 @@
+// ignore_for_file: empty_catches
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class CartPage extends StatefulWidget {
   final Map<String, int> cart;
   final Function(Map<String, int>) onCartUpdated;
 
-  const CartPage({
-    super.key,
-    required this.cart,
-    required this.onCartUpdated,
-  });
-
-  // Static method to handle route creation
-  static Route<dynamic> route(RouteSettings settings) {
-    final args = settings.arguments as Map<String, dynamic>;
-    return MaterialPageRoute(
-      builder: (context) {
-        return CartPage(
-          cart: args['cart'],
-          onCartUpdated: args['onCartUpdated'],
-        );
-      },
-    );
-  }
+  const CartPage({super.key, required this.cart, required this.onCartUpdated});
 
   @override
   State<CartPage> createState() => _CartPageState();
 }
 
 class _CartPageState extends State<CartPage> {
-  late Map<String, int> _cart;
-  double _totalAmount = 0.0;
-  bool _isLoading = true;
+  Map<String, int> _cart = {};
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _cart = Map.from(widget.cart);
-    _fetchCartItems();
   }
 
-  Future<void> _fetchCartItems() async {
-    setState(() => _isLoading = true);
-    double total = 0.0;
+  void _updateCart() {
+    widget.onCartUpdated(_cart);
+  }
+
+  void _addToCart(String cartKey) {
+    setState(() {
+      _cart.update(cartKey, (value) => value + 1, ifAbsent: () => 1);
+    });
+    _updateCart();
+  }
+
+  void _removeFromCart(String cartKey) {
+    setState(() {
+      if (_cart.containsKey(cartKey)) {
+        if (_cart[cartKey]! > 1) {
+          _cart[cartKey] = _cart[cartKey]! - 1;
+        } else {
+          _cart.remove(cartKey);
+        }
+      }
+    });
+    _updateCart();
+  }
+
+  void _removeItemCompletely(String cartKey) {
+    setState(() {
+      _cart.remove(cartKey);
+    });
+    _updateCart();
+  }
+
+  Future<Map<String, dynamic>> _fetchCartItems() async {
+    final Map<String, dynamic> itemsData = {};
 
     try {
-      for (var entry in _cart.entries) {
-        final parts = entry.key.split('_');
-        if (parts.length != 2) continue;
+      // Debug print
 
-        final collection = parts[0]; // 'extra_menu' or 'general_menu'
-        final menuId = parts[1];
-        final quantity = entry.value;
+      for (String cartKey in _cart.keys) {
+        // Debug print
+
+        final parts = cartKey.split('_');
+        if (parts.length < 2) {
+          continue;
+        }
+
+        // Map the collection names to match your Firestore collections
+        String collection = parts[0];
+        if (collection == 'general') {
+          collection = 'general_menu';
+        } else if (collection == 'extra') {
+          collection = 'extra_menu';
+        }
+
+        final itemId = parts[2];
+
 
         final doc = await FirebaseFirestore.instance
             .collection(collection)
-            .doc(menuId)
+            .doc(itemId)
             .get();
 
-        if (doc.exists) {
-          final data = doc.data() as Map<String, dynamic>;
-          final price = (data['price'] as num?)?.toDouble() ?? 0.0;
-          total += price * quantity;
+
+        if (doc.exists && doc.data() != null) {
+          itemsData[cartKey] = doc.data()!;
+        } else {
         }
       }
+
     } catch (e) {
-      debugPrint('Error fetching cart items: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error loading cart items')),
-        );
-      }
     }
 
-    if (mounted) {
-      setState(() {
-        _totalAmount = total;
-        _isLoading = false;
-      });
-    }
+    return itemsData;
   }
 
-  void _updateQuantity(String key, int newQuantity) {
+  double _calculateTotal(Map<String, dynamic> itemsData) {
+    double total = 0.0;
+    for (String cartKey in _cart.keys) {
+      final quantity = _cart[cartKey] ?? 0;
+      final itemData = itemsData[cartKey];
+      if (itemData != null) {
+        final price = (itemData['price'] as num?)?.toDouble() ?? 0.0;
+        total += price * quantity;
+      }
+    }
+    return total;
+  }
+
+  Future<void> _proceedToPay(double totalAmount) async {
     setState(() {
-      if (newQuantity > 0) {
-        _cart[key] = newQuantity;
-      } else {
-        _cart.remove(key);
-      }
+      _isLoading = true;
     });
-    _fetchCartItems();
-  }
 
-  void _proceedToCheckout() {
-    widget.onCartUpdated(_cart);
-    
+    // Simulate payment processing
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    // Show success dialog
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Confirm Order'),
-        content: Text('Total amount: ₹${_totalAmount.toStringAsFixed(2)}'),
+        icon: const Icon(Icons.check_circle, color: Colors.green, size: 60),
+        title: const Text('Payment Successful!'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Amount Paid: ₹${totalAmount.toStringAsFixed(2)}'),
+            const SizedBox(height: 10),
+            const Text('Your order has been placed successfully!'),
+          ],
+        ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
-              _placeOrder();
+              Navigator.of(context).pop(); // Close dialog
+              setState(() {
+                _cart.clear();
+              });
+              _updateCart();
+              Navigator.of(context).pop(); // Go back to dashboard
             },
-            child: const Text('Confirm'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('OK'),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _placeOrder() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('User not logged in');
-
-      final orderRef = await FirebaseFirestore.instance
-          .collection('orders')
-          .add({
-            'userId': user.uid,
-            'items': _cart,
-            'totalAmount': _totalAmount,
-            'status': 'pending',
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-
-      setState(() {
-        _cart.clear();
-        _totalAmount = 0.0;
-      });
-      widget.onCartUpdated(_cart);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Order #${orderRef.id} placed successfully!'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error placing order: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to place order. Please try again.')),
-        );
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_cart.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Your Cart')),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.shopping_cart_outlined, size: 80, color: Colors.grey),
+              SizedBox(height: 20),
+              Text(
+                'Your cart is empty',
+                style: TextStyle(fontSize: 18, color: Colors.grey),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Add some delicious items to get started!',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Your Cart'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            widget.onCartUpdated(_cart);
-            Navigator.pop(context);
-          },
-        ),
+        title: Text('Your Cart (${_cart.length} items)'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Clear Cart'),
+                  content: const Text(
+                    'Are you sure you want to remove all items from your cart?',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        setState(() {
+                          _cart.clear();
+                        });
+                        _updateCart();
+                      },
+                      child: const Text(
+                        'Clear',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+            child: const Text('Clear All'),
+          ),
+        ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _cart.isEmpty
-              ? const Center(child: Text('Your cart is empty'))
-              : Column(
-                  children: [
-                    Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _cart.length,
-                        itemBuilder: (context, index) {
-                          final key = _cart.keys.elementAt(index);
-                          final parts = key.split('_');
-                          final collection = parts[0];
-                          final menuId = parts[1];
-                          final quantity = _cart[key]!;
+      body: Column(
+        children: [
+          Expanded(
+            child: FutureBuilder<Map<String, dynamic>>(
+              future: _fetchCartItems(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-                          return FutureBuilder<DocumentSnapshot>(
-                            future: FirebaseFirestore.instance
-                                .collection(collection)
-                                .doc(menuId)
-                                .get(),
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState == ConnectionState.waiting) {
-                                return const ListTile(
-                                  leading: CircularProgressIndicator(),
-                                  title: Text('Loading...'),
-                                );
-                              }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
 
-                              if (!snapshot.hasData || !snapshot.data!.exists) {
-                                return ListTile(
-                                  title: Text('Item not found ($key)'),
-                                  trailing: IconButton(
-                                    icon: const Icon(Icons.delete, color: Colors.red),
-                                    onPressed: () => _updateQuantity(key, 0),
+                final itemsData = snapshot.data ?? {};
+
+                // Debug print
+
+                if (itemsData.isEmpty) {
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          size: 60,
+                          color: Colors.orange,
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          'Unable to load cart items',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Please check your internet connection and try again',
+                          style: TextStyle(color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _cart.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 20),
+                  itemBuilder: (context, index) {
+                    final cartEntry = _cart.entries.elementAt(index);
+                    final cartKey = cartEntry.key;
+                    final quantity = cartEntry.value;
+
+                    final itemData = itemsData[cartKey];
+                    if (itemData == null) return const SizedBox.shrink();
+
+                    final price =
+                        (itemData['price'] as num?)?.toDouble() ?? 0.0;
+                    final itemTotal = price * quantity;
+
+                    return Card(
+                      elevation: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            // Item Image
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: itemData['photo'] != null
+                                  ? Image.network(
+                                      itemData['photo'],
+                                      width: 60,
+                                      height: 60,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.fastfood, size: 60),
+                                    )
+                                  : const Icon(Icons.fastfood, size: 60),
+                            ),
+                            const SizedBox(width: 12),
+
+                            // Item Details
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    itemData['name']?.toString() ??
+                                        itemData['description']?.toString() ??
+                                        'Unnamed Item',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
                                   ),
-                                );
-                              }
-
-                              final data = snapshot.data!.data() as Map<String, dynamic>;
-                              final name = data['name'] ?? 'Unnamed Item';
-                              final price = (data['price'] as num?)?.toDouble() ?? 0.0;
-                              final photo = data['photo'];
-
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 16),
-                                child: ListTile(
-                                  leading: photo != null
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: Image.network(
-                                            photo,
-                                            width: 60,
-                                            height: 60,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) =>
-                                                const Icon(Icons.fastfood),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '₹$price each',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  if (itemData['rating'] != null) ...[
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.star,
+                                          color: Colors.amber,
+                                          size: 16,
+                                        ),
+                                        Text(
+                                          ' ${itemData['rating']}',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 14,
                                           ),
-                                        )
-                                      : const Icon(Icons.fastfood),
-                                  title: Text(name),
-                                  subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('Price: ₹$price'),
-                                      Text('Subtotal: ₹${(price * quantity).toStringAsFixed(2)}'),
-                                    ],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Total: ₹${itemTotal.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: Colors.green,
+                                    ),
                                   ),
-                                  trailing: Row(
+                                ],
+                              ),
+                            ),
+
+                            // Quantity Controls
+                            Column(
+                              children: [
+                                // Remove item button
+                                IconButton(
+                                  onPressed: () =>
+                                      _removeItemCompletely(cartKey),
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
+                                  tooltip: 'Remove item',
+                                ),
+                                const SizedBox(height: 8),
+
+                                // Quantity controls
+                                Container(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: Colors.grey.shade300,
+                                    ),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       IconButton(
+                                        onPressed: () =>
+                                            _removeFromCart(cartKey),
                                         icon: const Icon(Icons.remove),
-                                        onPressed: () => _updateQuantity(key, quantity - 1),
+                                        iconSize: 18,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 32,
+                                          minHeight: 32,
+                                        ),
                                       ),
-                                      Text(quantity.toString()),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                        ),
+                                        child: Text(
+                                          quantity.toString(),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ),
                                       IconButton(
+                                        onPressed: () => _addToCart(cartKey),
                                         icon: const Icon(Icons.add),
-                                        onPressed: () => _updateQuantity(key, quantity + 1),
+                                        iconSize: 18,
+                                        constraints: const BoxConstraints(
+                                          minWidth: 32,
+                                          minHeight: 32,
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              );
-                            },
-                          );
-                        },
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+
+          // Bottom Section with Total and Pay Button
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.3),
+                  spreadRadius: 1,
+                  blurRadius: 5,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: FutureBuilder<Map<String, dynamic>>(
+              future: _fetchCartItems(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting ||
+                    !snapshot.hasData) {
+                  return const SizedBox.shrink();
+                }
+
+                final itemsData = snapshot.data!;
+                final total = _calculateTotal(itemsData);
+
+                return Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Total Amount:',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          '₹${total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color.fromARGB(255, 101, 157, 235),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () => _proceedToPay(total),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text(
+                                'Proceed to Pay',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                       ),
                     ),
-                    _buildCheckoutSection(),
                   ],
-                ),
-    );
-  }
-
-  Widget _buildCheckoutSection() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        boxShadow: [
-          BoxShadow(
-            // ignore: deprecated_member_use
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -5),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Total:',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                '₹${_totalAmount.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              onPressed: _proceedToCheckout,
-              child: const Text(
-                'Proceed to Checkout',
-                style: TextStyle(fontSize: 16),
-              ),
+                );
+              },
             ),
           ),
         ],
