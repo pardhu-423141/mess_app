@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import './paymentPage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../manager/add_extra_menu.dart';
 
 class CartPage extends StatefulWidget {
   final Map<String, int> cart;
@@ -147,54 +150,151 @@ class _CartPageState extends State<CartPage> {
   }
 
   Future<void> _proceedToPay(double totalAmount) async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Simulate payment processing
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    // Show success dialog
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.check_circle, color: Colors.green, size: 60),
-        title: const Text('Payment Successful!'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Amount Paid: ₹${totalAmount.toStringAsFixed(2)}'),
-            const SizedBox(height: 10),
-            const Text('Your order has been placed successfully!'),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop(); // Close dialog
-              setState(() {
-                _cart.clear();
-              });
-              _updateCart();
-              Navigator.of(context).pop(); // Go back to dashboard
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('OK'),
-          ),
-        ],
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PaymentPage(totalAmount: totalAmount),
       ),
     );
+
+    if (result == true) {
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) return;
+
+                
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final gender = userDoc.data()?['sex'] == 'male' ? '1' : '0';
+
+        // 🕐 Determine current mealType dynamically
+        TimeOfDay nowTime = TimeOfDay.now();
+        String? mealName;
+        getMealTimings().forEach((name, range) {
+          if (_isWithinRange(nowTime, range.start, range.end)) {
+            mealName = name;
+          }
+        });
+
+        if (mealName == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Current time doesn't fall into any meal slot.")),
+          );
+          return;
+        }
+
+        final mealType = getMealCodes()[mealName!].toString();
+
+        final now = DateTime.now();
+        final dateStr = "${now.day.toString().padLeft(2, '0')}${now.month.toString().padLeft(2, '0')}${now.year}";
+        final baseId = "$dateStr$gender$mealType";
+
+        // Fetch count of existing orders to determine next suffix
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('orders')
+            .where('order_id', isGreaterThanOrEqualTo: baseId)
+            .where('order_id', isLessThan: baseId + '9999')
+            .get();
+
+        final count = querySnapshot.docs.length;
+        final nextSuffix = (count + 1).toString().padLeft(4, '0');
+        final orderId = "$baseId$nextSuffix";
+
+        // Separate cart items
+        Map<String, int> generalMenuItems = {};
+        Map<String, int> extraMenuItems = {};
+
+        for (String cartKey in _cart.keys) {
+          final parts = cartKey.split('_');
+          if (parts.length < 3) continue;
+
+          String collection = parts[0] == 'extra' ? 'extra_menu' : 'general_menu';
+          String itemId = parts[2];
+          int quantity = _cart[cartKey]!;
+
+          if (collection == 'general_menu') {
+            generalMenuItems[itemId] = quantity;
+          } else if (collection == 'extra_menu') {
+            extraMenuItems[itemId] = quantity;
+
+            final docRef = FirebaseFirestore.instance.collection(collection).doc(itemId);
+            final snapshot = await docRef.get();
+
+            if (snapshot.exists && snapshot.data() != null) {
+              final data = snapshot.data()!;
+              int currentAvailableOrders = data['availableOrders'] ?? 0;
+
+              int newAvailableOrders = currentAvailableOrders - quantity;
+              Map<String, dynamic> updates = {
+                'availableOrders': newAvailableOrders,
+              };
+
+              if (newAvailableOrders <= 0) {
+                updates['status'] = 'inactive';
+              }
+
+              await docRef.update(updates);
+            }
+          }
+        }
+
+        // Build order data
+        final orderData = {
+          'order_id': orderId,
+          'user_id': user.uid,
+          'amount': totalAmount,
+          'created on': now,
+          'general_menu': generalMenuItems.isEmpty ? 'nil' : generalMenuItems,
+          'extra_menu': extraMenuItems.isEmpty ? 'nil' : extraMenuItems,
+          'status' : 'not serverd'
+        };
+
+        await FirebaseFirestore.instance.collection('orders').doc(orderId).set(orderData);
+
+        // Show success popup
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            icon: const Icon(Icons.check_circle, color: Colors.green, size: 60),
+            title: const Text('Payment Successful!'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Amount Paid: ₹${totalAmount.toStringAsFixed(2)}'),
+                const SizedBox(height: 10),
+                const Text('Your order has been placed successfully!'),
+              ],
+            ),
+            actions: [
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Close dialog
+                  setState(() {
+                    _cart.clear();
+                  });
+                  _updateCart();
+                  Navigator.of(context).pop(); // Go back to previous screen
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      } catch (e) {
+        debugPrint('Error updating inventory after payment: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Payment succeeded, but updating inventory failed.')),
+        );
+      }
+    }
   }
+
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -544,4 +644,10 @@ class _CartPageState extends State<CartPage> {
       ),
     );
   }
+}
+bool _isWithinRange(TimeOfDay now, TimeOfDay start, TimeOfDay end) {
+  final nowMinutes = now.hour * 60 + now.minute;
+  final startMinutes = start.hour * 60 + start.minute;
+  final endMinutes = end.hour * 60 + end.minute;
+  return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
 }

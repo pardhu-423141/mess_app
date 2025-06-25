@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:mess_app/manager/general_menu_viewer.dart';
+import 'package:mess_app/manager/pages/general_menu_viewer.dart';
 import 'package:mess_app/student/cart_page.dart';
 
 import 'firebase_options.dart';
@@ -17,6 +17,7 @@ import 'manager/update_general_menu.dart';
 
 // ✅ Import the extra mess menu screen
 import 'manager/add_extra_menu.dart'; // Make sure this file exists
+import 'manager/pages/extra_menu_page.dart'; // Make sure this file exists
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +46,7 @@ class MyApp extends StatelessWidget {
         '/add_extra_menu': (context) => const AddExtraMenuPage(),
         '/update_general_menu':(context) => const UpdateGeneralMenuPage(),
         '/general_menu_viewer': (context) => const GeneralMenuViewerPage(),
+        '/extra_menu_page' : (context) => const ExtraMenuPage(),
         '/cart': (context) {
     // Extract the route arguments
           final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -15,12 +14,14 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
+  final TextEditingController _orderLimitController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
   File? _imageFile;
   DateTime _selectedDate = DateTime.now();
-  TimeOfDay? _startTime;
-  TimeOfDay? _endTime;
 
   final picker = ImagePicker();
+  int? selectedGender; // 1 = Boys, 0 = Girls
+  String selectedMeal = '';
 
   Future<void> _pickImage() async {
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
@@ -30,7 +31,6 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
       });
     }
   }
-
 
   Future<void> _pickDate() async {
     final date = await showDatePicker(
@@ -44,129 +44,26 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
     }
   }
 
-  Future<void> _pickTime({required bool isStart}) async {
-    int selectedHour = 12;
-    int selectedMinute = 0;
-    String period = 'AM';
-
-    await showModalBottomSheet(
-      context: context,
-      builder: (_) {
-        return SizedBox(
-          height: 250,
-          child: Column(
-            children: [
-              const Padding(
-                padding: EdgeInsets.all(8.0),
-                child: Text("Select Time", style: TextStyle(fontSize: 16)),
-              ),
-              Expanded(
-                child: Row(
-                  children: [
-                    // Hour picker (1 to 12)
-                    Expanded(
-                      child: CupertinoPicker(
-                        itemExtent: 32,
-                        scrollController: FixedExtentScrollController(
-                          initialItem: 11,
-                        ),
-                        onSelectedItemChanged: (index) {
-                          selectedHour = index + 1; // 1 to 12
-                        },
-                        children: List.generate(12, (i) => Text("${i + 1}")),
-                      ),
-                    ),
-                    // Minute picker (0 to 59)
-                    Expanded(
-                      child: CupertinoPicker(
-                        itemExtent: 32,
-                        scrollController: FixedExtentScrollController(
-                          initialItem: 0,
-                        ),
-                        onSelectedItemChanged: (index) {
-                          selectedMinute = index;
-                        },
-                        children: List.generate(
-                          60,
-                          (i) => Text(i.toString().padLeft(2, '0')),
-                        ),
-                      ),
-                    ),
-                    // AM/PM picker
-                    Expanded(
-                      child: CupertinoPicker(
-                        itemExtent: 32,
-                        onSelectedItemChanged: (index) {
-                          period = index == 0 ? 'AM' : 'PM';
-                        },
-                        children: const [Text('AM'), Text('PM')],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-
-                  // Convert to 24-hour format
-                  int hour = selectedHour % 12;
-                  if (period == 'PM') hour += 12;
-
-                  setState(() {
-                    final pickedTime = TimeOfDay(
-                      hour: hour,
-                      minute: selectedMinute,
-                    );
-                    if (isStart) {
-                      _startTime = pickedTime;
-                    } else {
-                      _endTime = pickedTime;
-                    }
-                  });
-                },
-                child: const Text("Set Time"),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  String formatTime(TimeOfDay? time) {
-    if (time == null) return "Not selected";
-
-    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
-    final minute = time.minute.toString().padLeft(2, '0');
-    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
-
-    return "$hour:$minute $period";
-  }
-
-  // Dropdown for Hostel selection (Boys/Girls)
-  int _selectedHostel = 1; // default Boys = 1
-
   @override
   Widget build(BuildContext context) {
+    final mealCodes = getMealCodes();
+    
     return Scaffold(
       appBar: AppBar(title: const Text('Add Extra Menu')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Form(
           key: _formKey,
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Item Name
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Item Name'),
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Enter name' : null,
               ),
-              const SizedBox(height: 12),
-
-              // Price
+              const SizedBox(height: 10),
               TextFormField(
                 controller: _priceController,
                 keyboardType: TextInputType.number,
@@ -174,160 +71,175 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Enter price' : null,
               ),
-              const SizedBox(height: 12),
-
-              // Hostel Dropdown
-              DropdownButtonFormField<int>(
-                value: _selectedHostel,
-                decoration: const InputDecoration(labelText: 'Hostel'),
-                items: const [
-                  DropdownMenuItem(value: 1, child: Text('Boys')),
-                  DropdownMenuItem(value: 0, child: Text('Girls')),
-                ],
-                onChanged: (val) {
-                  if (val != null) {
-                    setState(() {
-                      _selectedHostel = val;
-                    });
-                  }
-                },
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _orderLimitController,
+                keyboardType: TextInputType.number,
+                decoration:
+                    const InputDecoration(labelText: 'Max Orders Allowed'),
+                validator: (value) =>
+                    value == null || value.isEmpty ? 'Enter order limit' : null,
               ),
-
-              const SizedBox(height: 12),
-
-              // Image Picker
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _descriptionController,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'Description'),
+                validator: (value) =>
+                    value == null || value.isEmpty ? 'Enter description' : null,
+              ),
+              const SizedBox(height: 16),
+              const Text("Hostel", style: TextStyle(fontWeight: FontWeight.bold)),
+              Wrap(
+                spacing: 10,
+                children: [
+                  ChoiceChip(
+                    label: const Text("Boys"),
+                    selected: selectedGender == 1,
+                    onSelected: (_) => setState(() => selectedGender = 1),
+                  ),
+                  ChoiceChip(
+                    label: const Text("Girls"),
+                    selected: selectedGender == 0,
+                    onSelected: (_) => setState(() => selectedGender = 0),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text("Meal Type", style: TextStyle(fontWeight: FontWeight.bold)),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: mealCodes.keys.map((meal) {
+                  return ChoiceChip(
+                    label: Text(meal),
+                    selected: selectedMeal == meal,
+                    onSelected: (_) => setState(() => selectedMeal = meal),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
               Row(
                 children: [
                   _imageFile != null
-                      ? Image.file(
-                          _imageFile!,
+                      ? Image.file(_imageFile!,
+                          height: 80, width: 80, fit: BoxFit.cover)
+                      : Container(
                           height: 80,
                           width: 80,
-                          fit: BoxFit.cover,
-                        )
-                      : const Text("No image selected"),
-                  const SizedBox(width: 10),
+                          color: Colors.grey[300],
+                          child: const Icon(Icons.image, size: 30),
+                        ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Center(
+                      child: ElevatedButton.icon(
+                        onPressed: _pickImage,
+                        icon: const Icon(Icons.image, size: 18),
+                        label:
+                            const Text("Pick Image", style: TextStyle(fontSize: 14)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      "Date: ${_selectedDate.day.toString().padLeft(2, '0')}-"
+                      "${_selectedDate.month.toString().padLeft(2, '0')}-"
+                      "${_selectedDate.year}",
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
                   ElevatedButton.icon(
-                    onPressed: _pickImage,
-                    icon: const Icon(Icons.image),
-                    label: const Text("Pick Image"),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Date Picker
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Date: ${_selectedDate.day.toString().padLeft(2, '0')}-"
-                    "${_selectedDate.month.toString().padLeft(2, '0')}-"
-                    "${_selectedDate.year}",
-                  ),
-                  IconButton(
                     onPressed: _pickDate,
-                    icon: const Icon(Icons.calendar_today),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Start Time Picker
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text("Start Time: ${formatTime(_startTime)}"),
-                  ElevatedButton(
-                    onPressed: () => _pickTime(isStart: true),
-                    child: const Text("Pick Start Time"),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // End Time Picker
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text("End Time: ${formatTime(_endTime)}"),
-                  ElevatedButton(
-                    onPressed: () => _pickTime(isStart: false),
-                    child: const Text("Pick End Time"),
+                    icon: const Icon(Icons.calendar_today, size: 18),
+                    label:
+                        const Text("Pick Date", style: TextStyle(fontSize: 14)),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
-
-              // Submit Button
-              ElevatedButton.icon(
-                onPressed: () async {
-                  if (_formKey.currentState?.validate() != true ||
-                      _startTime == null ||
-                      _endTime == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Please fill all fields and select time.',
+              Center(
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    if (_formKey.currentState?.validate() != true) return;
+                    if (selectedMeal.isEmpty || selectedGender == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Select meal type and hostel"),
                         ),
-                      ),
+                      );
+                      return;
+                    }
+
+                    final dateStr = "${_selectedDate.day.toString().padLeft(2, '0')}"
+                        "${_selectedDate.month.toString().padLeft(2, '0')}"
+                        "${_selectedDate.year}";
+                    final docPrefix = "$dateStr";
+
+                    final allDocs = await FirebaseFirestore.instance
+                        .collection('extra_menu')
+                        .get();
+
+                    final matchingDocs = allDocs.docs
+                        .where((doc) => doc.id.startsWith(docPrefix))
+                        .toList();
+
+                    final paddedCount = (matchingDocs.length + 1).toString().padLeft(2, '0');
+                    final docId = "$docPrefix$paddedCount";
+
+                    final timeRange = getMealTimeRange(selectedMeal);
+                    final startTime = DateTime(
+                      _selectedDate.year,
+                      _selectedDate.month,
+                      _selectedDate.day,
+                      timeRange.start.hour,
+                      timeRange.start.minute,
                     );
-                    return;
-                  }
+                    final endTime = DateTime(
+                      _selectedDate.year,
+                      _selectedDate.month,
+                      _selectedDate.day,
+                      timeRange.end.hour,
+                      timeRange.end.minute,
+                    );
 
-                  final now = DateTime.now();
-                  final dateStr =
-                      "${now.day.toString().padLeft(2, '0')}"
-                      "${now.month.toString().padLeft(2, '0')}"
-                      "${now.year}";
+                    final now = DateTime.now();
+                    final status = now.isAfter(startTime) && now.isBefore(endTime)
+                        ? 'active'
+                        : 'inactive';
 
-                  final snapshot = await FirebaseFirestore.instance
-                      .collection('extra_menu')
-                      .get();
-                  final count = snapshot.docs.length + 1;
+                    await FirebaseFirestore.instance
+                        .collection('extra_menu')
+                        .doc(docId)
+                        .set({
+                          'name': _nameController.text.trim(),
+                          'price': _priceController.text.trim(),
+                          'description': _descriptionController.text.trim(),
+                          'startTime': Timestamp.fromDate(startTime),
+                          'endTime': Timestamp.fromDate(endTime),
+                          'availableOrders': int.parse(_orderLimitController.text.trim()),
+                          'rating': 0,
+                          'mealType': selectedMeal,
+                          'gender' : selectedGender,
+                          'status': status,
+                        });
 
-                  final docId =
-                      "$dateStr${count.toString().padLeft(2, '0')}${_selectedHostel}";
-
-                  final startDateTime = DateTime(
-                    _selectedDate.year,
-                    _selectedDate.month,
-                    _selectedDate.day,
-                    _startTime!.hour,
-                    _startTime!.minute,
-                  );
-
-                  final endDateTime = DateTime(
-                    _selectedDate.year,
-                    _selectedDate.month,
-                    _selectedDate.day,
-                    _endTime!.hour,
-                    _endTime!.minute,
-                  );
-                  int rating = 0;
-
-                  await FirebaseFirestore.instance
-                      .collection('extra_menu')
-                      .doc(docId)
-                      .set({
-                        'name': _nameController.text.trim(),
-                        'price': _priceController.text.trim(),
-                        'startTime': Timestamp.fromDate(startDateTime),
-                        'endTime': Timestamp.fromDate(endDateTime),
-                        'createdAt': FieldValue.serverTimestamp(),
-                        'hostel': _selectedHostel,
-                        'rating':rating,
-                      });
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Menu item added successfully!'),
-                    ),
-                  );
-                  Navigator.pop(context);
-                },
-                icon: const Icon(Icons.save),
-                label: const Text("Submit"),
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Menu item added successfully!')),
+                    );
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.save),
+                  label: const Text("Submit"),
+                ),
               ),
             ],
           ),
@@ -335,4 +247,47 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
       ),
     );
   }
+}
+
+class TimeOfDayRange {
+  final TimeOfDay start;
+  final TimeOfDay end;
+  TimeOfDayRange({required this.start, required this.end});
+}
+
+/// Reusable meal code mappings
+Map<String, int> getMealCodes() {
+  return {
+    'Breakfast': 1,
+    'Lunch': 2,
+    'Snacks': 3,
+    'Dinner': 4,
+  };
+}
+
+/// Reusable meal time ranges
+Map<String, TimeOfDayRange> getMealTimings() {
+  return {
+    'Breakfast': TimeOfDayRange(
+      start: const TimeOfDay(hour: 5, minute: 0),
+      end: const TimeOfDay(hour: 10, minute: 0),
+    ),
+    'Lunch': TimeOfDayRange(
+      start: const TimeOfDay(hour: 10, minute: 30),
+      end: const TimeOfDay(hour: 15, minute: 30),
+    ),
+    'Snacks': TimeOfDayRange(
+      start: const TimeOfDay(hour: 15, minute: 30),
+      end: const TimeOfDay(hour: 17, minute: 45),
+    ),
+    'Dinner': TimeOfDayRange(
+      start: const TimeOfDay(hour: 18, minute: 15),
+      end: const TimeOfDay(hour: 22, minute: 00),
+    ),
+  };
+}
+
+/// Get specific time range from meal type
+TimeOfDayRange getMealTimeRange(String meal) {
+  return getMealTimings()[meal]!;
 }
