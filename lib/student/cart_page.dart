@@ -245,7 +245,8 @@ class _CartPageState extends State<CartPage> {
           'created on': now,
           'general_menu': generalMenuItems.isEmpty ? 'nil' : generalMenuItems,
           'extra_menu': extraMenuItems.isEmpty ? 'nil' : extraMenuItems,
-          'status' : 'not serverd'
+          'status' : 'not served',
+          'QR_id' : FirebaseFirestore.instance.collection('orders').doc().id,
         };
 
         await FirebaseFirestore.instance.collection('orders').doc(orderId).set(orderData);
