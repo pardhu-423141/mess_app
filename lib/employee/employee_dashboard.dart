@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import './pages/home_page.dart';
+import './pages/profile_page.dart';
 
-import '../login_page.dart';
-import '../services/notification_service.dart';
 
 class EmployeeDashboard extends StatefulWidget {
   const EmployeeDashboard({super.key});
@@ -15,85 +11,28 @@ class EmployeeDashboard extends StatefulWidget {
 }
 
 class _EmployeeDashboardState extends State<EmployeeDashboard> {
-  @override
-  void initState() {
-    super.initState();
-    _initializeNotifications();
-  }
-
-  Future<void> _initializeNotifications() async {
-    await NotificationService.initialize();
-
-    final prefs = await SharedPreferences.getInstance();
-    final alreadyPrompted = prefs.getBool('notificationsPrompted') ?? false;
-    final isGranted = await NotificationService.areNotificationsEnabled();
-
-    if (alreadyPrompted || isGranted || !mounted) return;
-
-    _showPermissionDialog(prefs);
-  }
-
-  void _showPermissionDialog(SharedPreferences prefs) {
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Enable Notifications'),
-        content: const Text(
-            'Enable notifications to stay informed about announcements and deadlines.'),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await Permission.notification.request();
-              await prefs.setBool('notificationsPrompted', true);
-              if (!mounted) return;
-              Navigator.of(context).pop();
-            },
-            child: const Text('Enable'),
-          ),
-          TextButton(
-            onPressed: () async {
-              await prefs.setBool('notificationsPrompted', true);
-              if (!mounted) return;
-              Navigator.of(context).pop();
-            },
-            child: const Text('Cancel'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _signOut() async {
-    await GoogleSignIn().signOut();
-    await FirebaseAuth.instance.signOut();
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginPage()),
-      (route) => false,
-    );
-  }
+  int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    final name = user?.displayName ?? 'Employee';
+    final pages = [
+      ScanQR(),
+      const ProfilePage(),
+    ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Employee Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sign Out',
-            onPressed: _signOut,
-          ),
+      appBar: AppBar(title: const Text('Employee Dashboard')),
+      body: pages[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) => setState(() => _selectedIndex = index),
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Colors.blue,
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
-      ),
-      body: Center(
-        child: Text('Welcome $name!', style: const TextStyle(fontSize: 20)),
       ),
     );
   }

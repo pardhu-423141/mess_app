@@ -282,7 +282,7 @@ Map<String, TimeOfDayRange> getMealTimings() {
     ),
     'Dinner': TimeOfDayRange(
       start: const TimeOfDay(hour: 18, minute: 15),
-      end: const TimeOfDay(hour: 22, minute: 00),
+      end: const TimeOfDay(hour: 23, minute: 50),
     ),
   };
 }
