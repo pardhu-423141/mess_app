@@ -67,61 +67,46 @@ class _ScanQRState extends State<ScanQR> {
   }
 
   void _showOrderDetailsDialog(Map<String, dynamic> orderData, String orderId) async {
-    final extraMenuRaw = orderData['extra_menu'];
     final generalMenuRaw = orderData['general_menu'];
+    final extraMenuRaw = orderData['extra_menu'];
 
-    final Map<String, dynamic> extraMenu =
-        (extraMenuRaw is Map<String, dynamic>) ? extraMenuRaw : {};
-    final Map<String, dynamic> generalMenu =
-        (generalMenuRaw is Map<String, dynamic>) ? generalMenuRaw : {};
-
-    // Fetch item names for general menu
     List<Widget> generalMenuWidgets = [];
-    if (generalMenu.isNotEmpty) {
+    if (generalMenuRaw is List) {
       generalMenuWidgets.add(
-        Text("General Menu Items", style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text("General Menu Items", style: TextStyle(fontWeight: FontWeight.bold)),
       );
-      for (var entry in generalMenu.entries) {
-        String itemId = entry.key;
-        int quantity = entry.value;
 
-        DocumentSnapshot doc = await FirebaseFirestore.instance
-            .collection('general_menu')
-            .doc(itemId)
-            .get();
+      for (var item in generalMenuRaw) {
+        final itemMap = item as Map<String, dynamic>;
+        final quantity = itemMap['quantity'] ?? 1;
+        final name = itemMap['name'] ?? 'Unnamed';
 
-        String itemName = doc.exists ? (doc.data() as Map)['name'] ?? itemId : itemId;
-        generalMenuWidgets.add(Text("- $itemName x$quantity"));
+        generalMenuWidgets.add(Text("- $name (x$quantity)"));
       }
-      generalMenuWidgets.add(SizedBox(height: 10));
+      generalMenuWidgets.add(const SizedBox(height: 10));
     }
 
-    // Fetch item names for extra menu
     List<Widget> extraMenuWidgets = [];
-    if (extraMenu.isNotEmpty) {
+    if (extraMenuRaw is List) {
       extraMenuWidgets.add(
-        Text("Extra Menu Items", style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text("Extra Menu Items", style: TextStyle(fontWeight: FontWeight.bold)),
       );
-      for (var entry in extraMenu.entries) {
-        String itemId = entry.key;
-        int quantity = entry.value;
 
-        DocumentSnapshot doc = await FirebaseFirestore.instance
-            .collection('extra_menu')
-            .doc(itemId)
-            .get();
+      for (var item in extraMenuRaw) {
+        final itemMap = item as Map<String, dynamic>;
+        final quantity = itemMap['quantity'] ?? 1;
+        final name = itemMap['name'] ?? 'Unnamed';
 
-        String itemName = doc.exists ? (doc.data() as Map)['name'] ?? itemId : itemId;
-        extraMenuWidgets.add(Text("- $itemName x$quantity"));
+        extraMenuWidgets.add(Text("- $name (x$quantity)"));
       }
-      extraMenuWidgets.add(SizedBox(height: 10));
+      extraMenuWidgets.add(const SizedBox(height: 10));
     }
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('Order Details'),
+          title: const Text('Order Details'),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,25 +114,27 @@ class _ScanQRState extends State<ScanQR> {
                 Text("Order ID: $orderId"),
                 Text("User ID: ${orderData['user_id']}"),
                 Text("Amount: ₹${orderData['amount']}"),
-                Text("Timestamp: ${orderData['timestamp']}"),
-                SizedBox(height: 12),
+                if (orderData['created on'] != null)
+                  Text("Timestamp: ${orderData['created on'].toDate()}"),
+                const SizedBox(height: 12),
                 ...generalMenuWidgets,
                 ...extraMenuWidgets,
-                if (generalMenuWidgets.isEmpty && extraMenuWidgets.isEmpty)
-                  Text("No menu items found in this order."),
+                if (generalMenuWidgets.length <= 1 && extraMenuWidgets.length <= 1)
+                  const Text("No menu items found in this order."),
               ],
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text("Close"),
+              child: const Text("Close"),
             ),
           ],
         );
       },
     );
   }
+
 
 
 

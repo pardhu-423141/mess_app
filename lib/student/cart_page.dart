@@ -114,6 +114,7 @@ class _CartPageState extends State<CartPage> {
         print('Document exists: ${doc.exists}'); // Debug print
         
         if (doc.exists && doc.data() != null) {
+
           itemsData[cartKey] = doc.data()!;
           print('Added item data for: $cartKey'); // Debug print
         } else {
@@ -200,8 +201,10 @@ class _CartPageState extends State<CartPage> {
         final orderId = "$baseId$nextSuffix";
 
         // Separate cart items
-        Map<String, int> generalMenuItems = {};
-        Map<String, int> extraMenuItems = {};
+       
+        List<Map<String, dynamic>> generalMenuList = [];
+        List<Map<String, dynamic>> extraMenuList = [];
+
 
         for (String cartKey in _cart.keys) {
           final parts = cartKey.split('_');
@@ -211,43 +214,54 @@ class _CartPageState extends State<CartPage> {
           String itemId = parts[2];
           int quantity = _cart[cartKey]!;
 
+          final docRef = FirebaseFirestore.instance.collection(collection).doc(itemId);
+          final snapshot = await docRef.get();
+
+          if (!snapshot.exists || snapshot.data() == null) continue;
+
+          final data = snapshot.data()!;
+          String itemName = data['name'] ?? 'Unnamed';
+
+          final itemEntry = {
+            'itemId': itemId,
+            'name': collection == 'general_menu' ? mealName : itemName,
+            'quantity': quantity,
+            'rated': false,
+          };
+
           if (collection == 'general_menu') {
-            generalMenuItems[itemId] = quantity;
-          } else if (collection == 'extra_menu') {
-            extraMenuItems[itemId] = quantity;
+            generalMenuList.add(itemEntry);
+          } else {
+            extraMenuList.add(itemEntry);
 
-            final docRef = FirebaseFirestore.instance.collection(collection).doc(itemId);
-            final snapshot = await docRef.get();
+            int currentAvailableOrders = data['availableOrders'] ?? 0;
+            int newAvailableOrders = currentAvailableOrders - quantity;
 
-            if (snapshot.exists && snapshot.data() != null) {
-              final data = snapshot.data()!;
-              int currentAvailableOrders = data['availableOrders'] ?? 0;
-
-              int newAvailableOrders = currentAvailableOrders - quantity;
-              Map<String, dynamic> updates = {
-                'availableOrders': newAvailableOrders,
-              };
-
-              if (newAvailableOrders <= 0) {
-                updates['status'] = 'inactive';
-              }
-
-              await docRef.update(updates);
+            Map<String, dynamic> updates = {
+              'availableOrders': newAvailableOrders,
+            };
+            if (newAvailableOrders <= 0) {
+              updates['status'] = 'inactive';
             }
+
+            await docRef.update(updates);
           }
         }
 
-        // Build order data
+
+        // Build final order data
         final orderData = {
           'order_id': orderId,
           'user_id': user.uid,
           'amount': totalAmount,
           'created on': now,
-          'general_menu': generalMenuItems.isEmpty ? 'nil' : generalMenuItems,
-          'extra_menu': extraMenuItems.isEmpty ? 'nil' : extraMenuItems,
-          'status' : 'not served',
-          'QR_id' : FirebaseFirestore.instance.collection('orders').doc().id,
+          'status': 'not served',
+          'QR_id': FirebaseFirestore.instance.collection('orders').doc().id,
+          'general_menu': generalMenuList.isEmpty ? 'nil' : generalMenuList,
+          'extra_menu': extraMenuList.isEmpty ? 'nil' : extraMenuList,
+          'payment_status' : 'NOT_PAID',
         };
+
 
         await FirebaseFirestore.instance.collection('orders').doc(orderId).set(orderData);
 
