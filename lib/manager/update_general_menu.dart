@@ -72,6 +72,7 @@ Future<void> _submitData() async {
     'photo': imageUrl,
     'price': price,
     'rating': 0,
+    'status' : 'active',
   });
 
   ScaffoldMessenger.of(context).showSnackBar(
