@@ -3,7 +3,7 @@ import './pages/home_page.dart';
 import './pages/extra_menu_page.dart';
 import './pages/general_menu_viewer.dart';
 import './pages/analytics_page.dart';
-import './pages/profile_page.dart';
+import '../profile.dart';
 
 class ManagerDashboard extends StatefulWidget {
   const ManagerDashboard({super.key});

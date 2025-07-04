@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/cloudinary_service.dart';
 
 class AddExtraMenuPage extends StatefulWidget {
   const AddExtraMenuPage({super.key});
@@ -16,7 +17,9 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
   final TextEditingController _priceController = TextEditingController();
   final TextEditingController _orderLimitController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
+
   File? _imageFile;
+  String? _uploadedImageUrl;
   DateTime _selectedDate = DateTime.now();
 
   final picker = ImagePicker();
@@ -26,9 +29,26 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
   Future<void> _pickImage() async {
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
+      final file = File(pickedFile.path);
+      setState(() => _imageFile = file);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Uploading image...')),
+      );
+
+      final imageUrl = await CloudinaryService.uploadImage(file);
+
+      if (imageUrl != null) {
+        setState(() => _uploadedImageUrl = imageUrl);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Image uploaded successfully')),
+        );
+      } else {
+        setState(() => _uploadedImageUrl = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Image upload failed')),
+        );
+      }
     }
   }
 
@@ -47,7 +67,7 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
   @override
   Widget build(BuildContext context) {
     final mealCodes = getMealCodes();
-    
+
     return Scaffold(
       appBar: AppBar(title: const Text('Add Extra Menu')),
       body: SingleChildScrollView(
@@ -75,8 +95,7 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
               TextFormField(
                 controller: _orderLimitController,
                 keyboardType: TextInputType.number,
-                decoration:
-                    const InputDecoration(labelText: 'Max Orders Allowed'),
+                decoration: const InputDecoration(labelText: 'Max Orders Allowed'),
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Enter order limit' : null,
               ),
@@ -122,8 +141,7 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
               Row(
                 children: [
                   _imageFile != null
-                      ? Image.file(_imageFile!,
-                          height: 80, width: 80, fit: BoxFit.cover)
+                      ? Image.file(_imageFile!, height: 80, width: 80, fit: BoxFit.cover)
                       : Container(
                           height: 80,
                           width: 80,
@@ -136,8 +154,7 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
                       child: ElevatedButton.icon(
                         onPressed: _pickImage,
                         icon: const Icon(Icons.image, size: 18),
-                        label:
-                            const Text("Pick Image", style: TextStyle(fontSize: 14)),
+                        label: const Text("Pick Image", style: TextStyle(fontSize: 14)),
                       ),
                     ),
                   ),
@@ -157,8 +174,7 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
                   ElevatedButton.icon(
                     onPressed: _pickDate,
                     icon: const Icon(Icons.calendar_today, size: 18),
-                    label:
-                        const Text("Pick Date", style: TextStyle(fontSize: 14)),
+                    label: const Text("Pick Date", style: TextStyle(fontSize: 14)),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
@@ -172,9 +188,14 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
                     if (_formKey.currentState?.validate() != true) return;
                     if (selectedMeal.isEmpty || selectedGender == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Select meal type and hostel"),
-                        ),
+                        const SnackBar(content: Text("Select meal type and hostel")),
+                      );
+                      return;
+                    }
+
+                    if (_uploadedImageUrl == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Please upload an image")),
                       );
                       return;
                     }
@@ -192,7 +213,8 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
                         .where((doc) => doc.id.startsWith(docPrefix))
                         .toList();
 
-                    final paddedCount = (matchingDocs.length + 1).toString().padLeft(2, '0');
+                    final paddedCount =
+                        (matchingDocs.length + 1).toString().padLeft(2, '0');
                     final docId = "$docPrefix$paddedCount";
 
                     final timeRange = getMealTimeRange(selectedMeal);
@@ -228,8 +250,9 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
                           'availableOrders': int.parse(_orderLimitController.text.trim()),
                           'rating': 0,
                           'mealType': selectedMeal,
-                          'gender' : selectedGender,
+                          'gender': selectedGender,
                           'status': status,
+                          'imageUrl': _uploadedImageUrl, // ✅ Image URL saved
                         });
 
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -255,7 +278,6 @@ class TimeOfDayRange {
   TimeOfDayRange({required this.start, required this.end});
 }
 
-/// Reusable meal code mappings
 Map<String, int> getMealCodes() {
   return {
     'Breakfast': 1,
@@ -265,7 +287,6 @@ Map<String, int> getMealCodes() {
   };
 }
 
-/// Reusable meal time ranges
 Map<String, TimeOfDayRange> getMealTimings() {
   return {
     'Breakfast': TimeOfDayRange(
@@ -282,12 +303,11 @@ Map<String, TimeOfDayRange> getMealTimings() {
     ),
     'Dinner': TimeOfDayRange(
       start: const TimeOfDay(hour: 18, minute: 15),
-      end: const TimeOfDay(hour: 22, minute: 00),
+      end: const TimeOfDay(hour: 23, minute: 50),
     ),
   };
 }
 
-/// Get specific time range from meal type
 TimeOfDayRange getMealTimeRange(String meal) {
   return getMealTimings()[meal]!;
 }
