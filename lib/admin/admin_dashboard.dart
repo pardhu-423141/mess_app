@@ -10,7 +10,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../login_page.dart';
 import '../services/notification_service.dart';
-import 'profile_page.dart';
+import '../profile.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
