@@ -8,11 +8,7 @@ class CartPage extends StatefulWidget {
   final Map<String, int> cart;
   final Function(Map<String, int>) onCartUpdated;
 
-  const CartPage({
-    super.key,
-    required this.cart,
-    required this.onCartUpdated,
-  });
+  const CartPage({super.key, required this.cart, required this.onCartUpdated});
 
   @override
   State<CartPage> createState() => _CartPageState();
@@ -61,23 +57,23 @@ class _CartPageState extends State<CartPage> {
 
   Future<Map<String, dynamic>> _fetchCartItems() async {
     final Map<String, dynamic> itemsData = {};
-    
+
     try {
       print('Cart keys: ${_cart.keys.toList()}'); // Debug print
-      
+
       for (String cartKey in _cart.keys) {
         print('Processing cart key: $cartKey'); // Debug print
-        
+
         final parts = cartKey.split('_');
         if (parts.length < 2) {
           print('Invalid cart key format: $cartKey');
           continue;
         }
-        
+
         // Map cart key prefixes to actual Firestore collection names
         String collection;
         String itemId;
-        
+
         if (parts.length >= 3) {
           // Handle format like: general_menu_111 or extra_menu_201
           if (parts[0] == 'general' && parts[1] == 'menu') {
@@ -103,16 +99,16 @@ class _CartPageState extends State<CartPage> {
             continue;
           }
         }
-        
+
         print('Collection: $collection, ItemId: $itemId'); // Debug print
-        
+
         final doc = await FirebaseFirestore.instance
             .collection(collection)
             .doc(itemId)
             .get();
-            
+
         print('Document exists: ${doc.exists}'); // Debug print
-        
+
         if (doc.exists && doc.data() != null) {
           itemsData[cartKey] = doc.data()!;
           print('Added item data for: $cartKey'); // Debug print
@@ -120,14 +116,13 @@ class _CartPageState extends State<CartPage> {
           print('Document not found or empty for: $collection/$itemId');
         }
       }
-      
+
       print('Total items loaded: ${itemsData.length}'); // Debug print
-      
     } catch (e) {
       print('Error fetching cart items: $e');
       print('Stack trace: ${StackTrace.current}');
     }
-    
+
     return itemsData;
   }
 
@@ -149,31 +144,139 @@ class _CartPageState extends State<CartPage> {
     return total;
   }
 
-  Future<void> _proceedToPay(double totalAmount) async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PaymentPage(totalAmount: totalAmount),
-      ),
+  /*Future<void> _proceedToPay(double totalAmount) async {
+  // Step 1: Separate menu items
+  Map<String, int> generalMenuItems = {};
+  Map<String, int> extraMenuItems = {};
+
+  for (String cartKey in _cart.keys) {
+    final parts = cartKey.split('_');
+    if (parts.length < 3) continue;
+
+    String collection = parts[0] == 'extra' ? 'extra_menu' : 'general_menu';
+    String itemId = parts[2];
+    int quantity = _cart[cartKey]!;
+
+    if (collection == 'general_menu') {
+      generalMenuItems[itemId] = quantity;
+    } else {
+      extraMenuItems[itemId] = quantity;
+    }
+  }
+
+  // Step 2: Reserve extra_menu items atomically
+  bool reserved = await _reserveExtraMenuItems(extraMenuItems);
+  if (!reserved) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Reservation failed: One or more items are sold out.')),
     );
+    return;
+  }
 
-    if (result == true) {
-      try {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user == null) return;
+  // Step 3: Initiate UPI payment
+  final upiResponse = await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => UPIPaymentScreen(amount: totalAmount),
+    ),
+  );
 
-                
-        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        final gender = userDoc.data()?['sex'] == 'male' ? '1' : '0';
+  // Step 4: Check payment result (upi_pay returns string status)
+  if (upiResponse == null || upiResponse.status.toLowerCase() != 'success') {
+    await _rollbackExtraMenuReservation(extraMenuItems); // rollback
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Payment failed or cancelled.')),
+    );
+    return;
+  }
 
-        // 🕐 Determine current mealType dynamically
-        TimeOfDay nowTime = TimeOfDay.now();
-        String? mealName;
-        getMealTimings().forEach((name, range) {
-          if (_isWithinRange(nowTime, range.start, range.end)) {
-            mealName = name;
-          }
-        });
+  // Step 5: Generate order ID
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final orderId = await _generateOrderId(user);
+
+  // Step 6: Save UPI transaction to Firestore
+  await FirebaseFirestore.instance.collection('transactions').add({
+    'order_id': orderId,
+    'status': upiResponse.status,
+    'transaction_id': upiResponse.transactionId,
+    'approval_ref': upiResponse.approvalRef,
+    'txn_ref': upiResponse.transactionRef,
+    'response_code': upiResponse.responseCode,
+    'message': upiResponse.statusMessage,
+    'timestamp': DateTime.now(),
+    'amount': totalAmount,
+    'user_id': user.uid,
+  });
+
+  // Step 7: Save order
+  final orderData = {
+    'order_id': orderId,
+    'user_id': user.uid,
+    'amount': totalAmount,
+    'created on': DateTime.now(),
+    'general_menu': generalMenuItems.isEmpty ? 'nil' : generalMenuItems,
+    'extra_menu': extraMenuItems.isEmpty ? 'nil' : extraMenuItems,
+    'status': 'not served',
+  };
+
+  await FirebaseFirestore.instance.collection('orders').doc(orderId).set(orderData);
+
+  // Step 8: Show success dialog
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      icon: const Icon(Icons.check_circle, color: Colors.green, size: 60),
+      title: const Text('Payment Successful!'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Amount Paid: ₹${totalAmount.toStringAsFixed(2)}'),
+          const SizedBox(height: 10),
+          const Text('Your order has been placed successfully!'),
+        ],
+      ),
+      actions: [
+        ElevatedButton(
+          onPressed: () {
+            Navigator.of(context).pop(); // Close dialog
+            setState(() {
+              _cart.clear();
+            });
+            _updateCart();
+            Navigator.of(context).pop(); // Back to cart screen
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
+}*/
+
+  Future<void> _proceedToPay(double totalAmount) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final gender = userDoc.data()?['sex'] == 'male' ? '1' : '0';
+
+      TimeOfDay nowTime = TimeOfDay.now();
+      String? mealName;
+      getMealTimings().forEach((name, range) {
+        if (_isWithinRange(nowTime, range.start, range.end)) {
+          mealName = name;
+        }
+      });
 
         if (mealName == null) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -188,69 +291,90 @@ class _CartPageState extends State<CartPage> {
         final dateStr = "${now.day.toString().padLeft(2, '0')}${now.month.toString().padLeft(2, '0')}${now.year}";
         final baseId = "$dateStr$gender$mealType";
 
-        // Fetch count of existing orders to determine next suffix
-        final querySnapshot = await FirebaseFirestore.instance
-            .collection('orders')
-            .where('order_id', isGreaterThanOrEqualTo: baseId)
-            .where('order_id', isLessThan: baseId + '9999')
-            .get();
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('orders')
+          .where('order_id', isGreaterThanOrEqualTo: baseId)
+          .where('order_id', isLessThan: baseId + '9999')
+          .get();
 
-        final count = querySnapshot.docs.length;
-        final nextSuffix = (count + 1).toString().padLeft(4, '0');
-        final orderId = "$baseId$nextSuffix";
+      final count = querySnapshot.docs.length;
+      final nextSuffix = (count + 1).toString().padLeft(4, '0');
+      final orderId = "$baseId$nextSuffix";
 
-        // Separate cart items
-        Map<String, int> generalMenuItems = {};
-        Map<String, int> extraMenuItems = {};
+      List<Map<String, dynamic>> generalMenuList = [];
+      List<Map<String, dynamic>> extraMenuList = [];
 
-        for (String cartKey in _cart.keys) {
-          final parts = cartKey.split('_');
-          if (parts.length < 3) continue;
+      for (String cartKey in _cart.keys) {
+        final parts = cartKey.split('_');
+        if (parts.length < 3) continue;
 
-          String collection = parts[0] == 'extra' ? 'extra_menu' : 'general_menu';
-          String itemId = parts[2];
-          int quantity = _cart[cartKey]!;
+        String collection = parts[0] == 'extra' ? 'extra_menu' : 'general_menu';
+        String itemId = parts[2];
+        int quantity = _cart[cartKey]!;
 
-          if (collection == 'general_menu') {
-            generalMenuItems[itemId] = quantity;
-          } else if (collection == 'extra_menu') {
-            extraMenuItems[itemId] = quantity;
+        final docRef = FirebaseFirestore.instance
+            .collection(collection)
+            .doc(itemId);
+        final snapshot = await docRef.get();
 
-            final docRef = FirebaseFirestore.instance.collection(collection).doc(itemId);
-            final snapshot = await docRef.get();
+        if (!snapshot.exists || snapshot.data() == null) continue;
 
-            if (snapshot.exists && snapshot.data() != null) {
-              final data = snapshot.data()!;
-              int currentAvailableOrders = data['availableOrders'] ?? 0;
+        final data = snapshot.data()!;
+        String itemName = data['name'] ?? 'Unnamed';
 
-              int newAvailableOrders = currentAvailableOrders - quantity;
-              Map<String, dynamic> updates = {
-                'availableOrders': newAvailableOrders,
-              };
-
-              if (newAvailableOrders <= 0) {
-                updates['status'] = 'inactive';
-              }
-
-              await docRef.update(updates);
-            }
-          }
-        }
-
-        // Build order data
-        final orderData = {
-          'order_id': orderId,
-          'user_id': user.uid,
-          'amount': totalAmount,
-          'created on': now,
-          'general_menu': generalMenuItems.isEmpty ? 'nil' : generalMenuItems,
-          'extra_menu': extraMenuItems.isEmpty ? 'nil' : extraMenuItems,
-          'status' : 'not serverd'
+        final itemEntry = {
+          'itemId': itemId,
+          'name': collection == 'general_menu' ? mealName : itemName,
+          'quantity': quantity,
+          'rated': false,
         };
 
-        await FirebaseFirestore.instance.collection('orders').doc(orderId).set(orderData);
+        if (collection == 'general_menu') {
+          generalMenuList.add(itemEntry);
+        } else {
+          extraMenuList.add(itemEntry);
 
-        // Show success popup
+          int currentAvailableOrders = data['availableOrders'] ?? 0;
+          int newAvailableOrders = currentAvailableOrders - quantity;
+
+          Map<String, dynamic> updates = {
+            'availableOrders': newAvailableOrders,
+          };
+          if (newAvailableOrders <= 0) {
+            updates['status'] = 'inactive';
+          }
+
+          await docRef.update(updates);
+        }
+      }
+
+      final orderData = {
+        'order_id': orderId,
+        'user_id': user.uid,
+        'amount': totalAmount,
+        'created_on': now,
+        'status': 'not served',
+        'QR_id': FirebaseFirestore.instance.collection('orders').doc().id,
+        'general_menu': generalMenuList.isEmpty ? 'nil' : generalMenuList,
+        'extra_menu': extraMenuList.isEmpty ? 'nil' : extraMenuList,
+        'payment_status': 'NOT_PAID',
+      };
+
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(orderId)
+          .set(orderData);
+
+      // Launch payment screen
+      final paymentResult = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              CashfreePaymentScreen(amount: totalAmount, orderId: orderId),
+        ),
+      );
+
+      if (paymentResult != null && paymentResult['status'] == 'SUCCESS') {
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -273,7 +397,7 @@ class _CartPageState extends State<CartPage> {
                     _cart.clear();
                   });
                   _updateCart();
-                  Navigator.of(context).pop(); // Go back to previous screen
+                  Navigator.of(context).pop(); // Back to previous screen
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
@@ -284,25 +408,30 @@ class _CartPageState extends State<CartPage> {
             ],
           ),
         );
-      } catch (e) {
-        debugPrint('Error updating inventory after payment: $e');
+      } else {
+        await _rollbackExtraMenuReservation({
+          for (var item in extraMenuList) item['itemId']: item['quantity'],
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payment succeeded, but updating inventory failed.')),
+          const SnackBar(content: Text('Payment failed or cancelled.')),
         );
       }
+    } catch (e) {
+      debugPrint("Error during payment process: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Something went wrong during order process.'),
+        ),
+      );
     }
   }
-
-
-
 
   @override
   Widget build(BuildContext context) {
     if (_cart.isEmpty) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Your Cart'),
-        ),
+        appBar: AppBar(title: const Text('Your Cart')),
         body: const Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -334,7 +463,9 @@ class _CartPageState extends State<CartPage> {
                 context: context,
                 builder: (context) => AlertDialog(
                   title: const Text('Clear Cart'),
-                  content: const Text('Are you sure you want to remove all items from your cart?'),
+                  content: const Text(
+                    'Are you sure you want to remove all items from your cart?',
+                  ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context),
@@ -348,7 +479,10 @@ class _CartPageState extends State<CartPage> {
                         });
                         _updateCart();
                       },
-                      child: const Text('Clear', style: TextStyle(color: Colors.red)),
+                      child: const Text(
+                        'Clear',
+                        style: TextStyle(color: Colors.red),
+                      ),
                     ),
                   ],
                 ),
@@ -373,19 +507,28 @@ class _CartPageState extends State<CartPage> {
                 }
 
                 final itemsData = snapshot.data ?? {};
-                
-                print('Items data received: ${itemsData.keys.toList()}'); // Debug print
-                
+
+                print(
+                  'Items data received: ${itemsData.keys.toList()}',
+                ); // Debug print
+
                 if (itemsData.isEmpty) {
                   return const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.error_outline, size: 60, color: Colors.orange),
+                        Icon(
+                          Icons.error_outline,
+                          size: 60,
+                          color: Colors.orange,
+                        ),
                         SizedBox(height: 16),
                         Text(
                           'Unable to load cart items',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                         SizedBox(height: 8),
                         Text(
@@ -401,12 +544,13 @@ class _CartPageState extends State<CartPage> {
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),
                   itemCount: _cart.length,
-                  separatorBuilder: (context, index) => const Divider(height: 20),
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 20),
                   itemBuilder: (context, index) {
                     final cartEntry = _cart.entries.elementAt(index);
                     final cartKey = cartEntry.key;
                     final quantity = cartEntry.value;
-                    
+
                     final itemData = itemsData[cartKey];
                     if (itemData == null) return const SizedBox.shrink();
 
@@ -419,7 +563,7 @@ class _CartPageState extends State<CartPage> {
                         price = (itemData['price'] as num).toDouble();
                       }
                     }
-                    
+
                     final itemTotal = price * quantity;
 
                     return Card(
@@ -437,22 +581,22 @@ class _CartPageState extends State<CartPage> {
                                       width: 60,
                                       height: 60,
                                       fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => 
+                                      errorBuilder: (_, __, ___) =>
                                           const Icon(Icons.fastfood, size: 60),
                                     )
                                   : const Icon(Icons.fastfood, size: 60),
                             ),
                             const SizedBox(width: 12),
-                            
+
                             // Item Details
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    itemData['name']?.toString() ?? 
-                                    itemData['description']?.toString() ?? 
-                                    'Unnamed Item',
+                                    itemData['name']?.toString() ??
+                                        itemData['description']?.toString() ??
+                                        'Unnamed Item',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w600,
                                       fontSize: 16,
@@ -470,7 +614,11 @@ class _CartPageState extends State<CartPage> {
                                     const SizedBox(height: 4),
                                     Row(
                                       children: [
-                                        const Icon(Icons.star, color: Colors.amber, size: 16),
+                                        const Icon(
+                                          Icons.star,
+                                          color: Colors.amber,
+                                          size: 16,
+                                        ),
                                         Text(
                                           ' ${itemData['rating']}',
                                           style: TextStyle(
@@ -493,29 +641,36 @@ class _CartPageState extends State<CartPage> {
                                 ],
                               ),
                             ),
-                            
+
                             // Quantity Controls
                             Column(
                               children: [
                                 // Remove item button
                                 IconButton(
-                                  onPressed: () => _removeItemCompletely(cartKey),
-                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () =>
+                                      _removeItemCompletely(cartKey),
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
                                   tooltip: 'Remove item',
                                 ),
                                 const SizedBox(height: 8),
-                                
+
                                 // Quantity controls
                                 Container(
                                   decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.grey.shade300),
+                                    border: Border.all(
+                                      color: Colors.grey.shade300,
+                                    ),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       IconButton(
-                                        onPressed: () => _removeFromCart(cartKey),
+                                        onPressed: () =>
+                                            _removeFromCart(cartKey),
                                         icon: const Icon(Icons.remove),
                                         iconSize: 18,
                                         constraints: const BoxConstraints(
@@ -524,7 +679,9 @@ class _CartPageState extends State<CartPage> {
                                         ),
                                       ),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                        ),
                                         child: Text(
                                           quantity.toString(),
                                           style: const TextStyle(
@@ -556,7 +713,7 @@ class _CartPageState extends State<CartPage> {
               },
             ),
           ),
-          
+
           // Bottom Section with Total and Pay Button
           Container(
             padding: const EdgeInsets.all(16),
@@ -609,7 +766,9 @@ class _CartPageState extends State<CartPage> {
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : () => _proceedToPay(total),
+                        onPressed: _isLoading
+                            ? null
+                            : () => _proceedToPay(total),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
@@ -645,9 +804,61 @@ class _CartPageState extends State<CartPage> {
     );
   }
 }
+
 bool _isWithinRange(TimeOfDay now, TimeOfDay start, TimeOfDay end) {
   final nowMinutes = now.hour * 60 + now.minute;
   final startMinutes = start.hour * 60 + start.minute;
   final endMinutes = end.hour * 60 + end.minute;
   return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+}
+
+Future<bool> _reserveExtraMenuItems(Map<String, int> extraMenuItems) async {
+  final firestore = FirebaseFirestore.instance;
+
+  try {
+    await firestore.runTransaction((transaction) async {
+      for (final entry in extraMenuItems.entries) {
+        final docRef = firestore.collection('extra_menu').doc(entry.key);
+        final snapshot = await transaction.get(docRef);
+
+        if (!snapshot.exists) {
+          throw Exception('Item ${entry.key} does not exist');
+        }
+
+        final data = snapshot.data()!;
+        final currentAvailable = data['availableOrders'] ?? 0;
+        final requestedQty = entry.value;
+
+        if (currentAvailable < requestedQty) {
+          throw Exception('Not enough stock for ${entry.key}');
+        }
+
+        transaction.update(docRef, {
+          'availableOrders': currentAvailable - requestedQty,
+          if ((currentAvailable - requestedQty) <= 0) 'status': 'inactive',
+        });
+      }
+    });
+
+    return true;
+  } catch (e) {
+    debugPrint('Reservation failed: $e');
+    return false;
+  }
+}
+
+Future<void> _rollbackExtraMenuReservation(
+  Map<String, int> extraMenuItems,
+) async {
+  for (final entry in extraMenuItems.entries) {
+    final docRef = FirebaseFirestore.instance
+        .collection('extra_menu')
+        .doc(entry.key);
+    final snapshot = await docRef.get();
+    final currentAvailable = snapshot.data()?['availableOrders'] ?? 0;
+    await docRef.update({
+      'availableOrders': currentAvailable + entry.value,
+      'status': 'active',
+    });
+  }
 }

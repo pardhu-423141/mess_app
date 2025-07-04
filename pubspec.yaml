@@ -43,7 +43,9 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   intl: ^0.20.2
-  
+  upi_pay: ^1.1.0
+  url_launcher: ^6.3.1
+  http: ^1.4.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -69,7 +71,15 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
      - assets/NIT_Andhra_Pradesh.png
-  #   - images/a_dot_ham.jpeg
+     - assets/upi_logos/amazonpay.png
+     - assets/upi_logos/bhim.png
+     - assets/upi_logos/gpay.png
+     - assets/upi_logos/hdfc.png
+     - assets/upi_logos/icici.png
+     - assets/upi_logos/paytm.png
+     - assets/upi_logos/phonepe.png
+     - assets/upi_logos/sbi.png
+
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

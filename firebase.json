@@ -1,1 +1,38 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"collegemessapp","appId":"1:276793636798:android:58d4f17389d18148d0abef","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"collegemessapp","configurations":{"android":"1:276793636798:android:58d4f17389d18148d0abef","ios":"1:276793636798:ios:5b7c505c17651df8d0abef","macos":"1:276793636798:ios:5b7c505c17651df8d0abef","web":"1:276793636798:web:97eb604fd1e60ca9d0abef","windows":"1:276793636798:web:a62ec15e6f590abcd0abef"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "collegemessapp",
+          "appId": "1:276793636798:android:58d4f17389d18148d0abef",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "collegemessapp",
+          "configurations": {
+            "android": "1:276793636798:android:58d4f17389d18148d0abef",
+            "ios": "1:276793636798:ios:5b7c505c17651df8d0abef",
+            "macos": "1:276793636798:ios:5b7c505c17651df8d0abef",
+            "web": "1:276793636798:web:97eb604fd1e60ca9d0abef",
+            "windows": "1:276793636798:web:a62ec15e6f590abcd0abef"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
+}
