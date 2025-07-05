@@ -24,17 +24,28 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     super.initState();
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   bool _isOrderExpired(Timestamp timestamp) {
     final DateTime orderTime = timestamp.toDate();
     final now = DateTime.now();
     final mealTimes = getMealTimings();
     for (var range in mealTimes.values) {
+      // Ensure we are comparing dates on the same day for meal timings
       final start = DateTime(orderTime.year, orderTime.month, orderTime.day, range.start.hour, range.start.minute);
       final end = DateTime(orderTime.year, orderTime.month, orderTime.day, range.end.hour, range.end.minute);
-      if (orderTime.isAfter(start) && orderTime.isBefore(end)) {
+
+      // Check if the order was placed within a meal time range
+      if (orderTime.isAfter(start.subtract(const Duration(seconds: 1))) && orderTime.isBefore(end.add(const Duration(seconds: 1)))) {
         return now.isAfter(end);
       }
     }
+    // If the order time doesn't fall within any defined meal window, consider it expired
+    // or handle as per your application's logic. For now, returning true.
     return true;
   }
 
@@ -92,7 +103,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
           child: ListTile(
             leading: const Icon(Icons.restaurant_menu, color: Colors.deepPurple),
             title: Text(item['name'] ?? 'Unnamed Item'),
-            trailing: Text("x${item['quantity']}", style: const TextStyle(fontWeight: FontWeight.bold)),
+            trailing: Text("x${item['quantity'] ?? 0}", style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
         );
       }).toList());
@@ -114,7 +125,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
           child: ListTile(
             leading: const Icon(Icons.local_dining, color: Colors.orange),
             title: Text(item['name'] ?? 'Unnamed Extra'),
-            trailing: Text("x${item['quantity']}", style: const TextStyle(fontWeight: FontWeight.bold)),
+            trailing: Text("x${item['quantity'] ?? 0}", style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
         );
       }).toList());
@@ -149,13 +160,14 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
       itemCount: orders.length,
       itemBuilder: (context, index) {
         final data = orders[index].data() as Map<String, dynamic>;
-        final orderId = data['order_id']?.toString() ?? '';
+        final orderId = data['order_id']?.toString() ?? 'N/A';
         final amount = data['amount'] ?? 0;
         final timestamp = data['created on'] as Timestamp;
         final orderTime = timestamp.toDate();
 
         DateTime? displayTime;
         String timeLabel = '';
+
         if (data['status'] == 'served') {
           displayTime = orderTime;
           timeLabel = 'Served at';
@@ -164,7 +176,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
           for (var range in mealTimings.values) {
             final start = DateTime(orderTime.year, orderTime.month, orderTime.day, range.start.hour, range.start.minute);
             final end = DateTime(orderTime.year, orderTime.month, orderTime.day, range.end.hour, range.end.minute);
-            if (orderTime.isAfter(start) && orderTime.isBefore(end)) {
+            if (orderTime.isAfter(start.subtract(const Duration(seconds: 1))) && orderTime.isBefore(end.add(const Duration(seconds: 1)))) {
               displayTime = end;
               timeLabel = data['status'] == 'pending' ? 'Expires at' : 'Expired at';
               break;
@@ -186,7 +198,12 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                     const Icon(Icons.receipt_long, color: Colors.deepPurple),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text("Order ID: $orderId", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        "Order ID: $orderId",
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
                     ),
                   ],
                 ),
@@ -204,8 +221,14 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                     children: [
                       const Icon(Icons.access_time, color: Colors.blueGrey),
                       const SizedBox(width: 8),
-                      Text("$timeLabel: ${DateFormat('dd/MM/yyyy • hh:mm a').format(displayTime)}",
-                          style: const TextStyle(fontSize: 14)),
+                      Expanded(
+                        child: Text(
+                          "$timeLabel: ${DateFormat('dd/MM/yyyy • hh:mm a').format(displayTime)}",
+                          style: const TextStyle(fontSize: 14),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -261,9 +284,18 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
         stream: FirebaseFirestore.instance
             .collection('orders')
             .where('user_id', isEqualTo: currentUser?.uid)
+            .where('payment_status', isEqualTo: 'SUCCESS')
             .snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text("Error: ${snapshot.error}"));
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text("No orders found.", style: TextStyle(fontSize: 16)));
+          }
 
           final activeOrders = <QueryDocumentSnapshot>[];
           final inactiveOrders = <QueryDocumentSnapshot>[];
