@@ -30,9 +30,10 @@ class CashfreeApi {
       },
       "link_notify": {"send_sms": false, "send_email": false},
       "link_meta": {
-        "return_url": "https://cashfree.com/devstudio/thankyou",
+        "return_url": 'messapp://payment-success?order_id=$orderId',
+        
         "notify_url":
-            "https://434f-2401-4900-882d-4dad-f5b8-78ce-5b31-d173.ngrok-free.app/webhook",
+            "https://f4c2-223-185-48-52.ngrok-free.app/webhook",
         "notes": {"internal_order_id": orderId},
       },
       "link_id": orderId,
