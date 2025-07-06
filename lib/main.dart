@@ -5,12 +5,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mess_app/manager/pages/general_menu_viewer.dart';
 import 'package:mess_app/student/cart_page.dart';
+import 'package:flutter/services.dart';
 
 import 'firebase_options.dart';
 import 'login_page.dart';
-
-
-
 
 import 'admin/admin_dashboard.dart';
 import 'employee/employee_dashboard.dart';
@@ -21,15 +19,55 @@ import 'manager/update_general_menu.dart';
 // ✅ Import the extra mess menu screen
 import 'manager/add_extra_menu.dart'; // Make sure this file exists
 import 'manager/pages/extra_menu_page.dart'; // Make sure this file exists
+import 'student/pages/redirect_page.dart';
+import 'package:app_links/app_links.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final AppLinks _appLinks = AppLinks();
+  Widget _startScreen = const SplashToSignInScreen();
+
+  @override
+  void initState() {
+    super.initState();
+    _initDeepLinkHandler();
+  }
+
+  Future<void> _initDeepLinkHandler() async {
+    final initialUri = await _appLinks.getInitialAppLink();
+    if (initialUri != null && initialUri.path.contains("payment-success")) {
+      final orderId = initialUri.queryParameters['order_id'];
+      setState(() {
+        _startScreen = PaymentRedirectPage(orderId: orderId);
+      });
+    }
+
+    _appLinks.uriLinkStream.listen((uri) {
+      if (uri.path.contains("payment-success")) {
+        final orderId = uri.queryParameters['order_id'];
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => PaymentRedirectPage(orderId: orderId)),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,9 +75,7 @@ class MyApp extends StatelessWidget {
       title: 'Firebase Auth Role App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: const SplashToSignInScreen(),
-      
-      // ✅ Routing table
+      home: _startScreen,
       routes: {
         '/login': (context) => const LoginPage(),
         '/admin-dashboard': (context) => const AdminDashboard(),
@@ -47,11 +83,10 @@ class MyApp extends StatelessWidget {
         '/manager-dashboard': (context) => const ManagerDashboard(),
         '/student-dashboard': (context) => const StudentDashboard(),
         '/add_extra_menu': (context) => const AddExtraMenuPage(),
-        '/update_general_menu':(context) => const UpdateGeneralMenuPage(),
+        '/update_general_menu': (context) => const UpdateGeneralMenuPage(),
         '/general_menu_viewer': (context) => const GeneralMenuViewerPage(),
-        '/extra_menu_page' : (context) => const ExtraMenuPage(),
+        '/extra_menu_page': (context) => const ExtraMenuPage(),
         '/cart': (context) {
-    // Extract the route arguments
           final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
           return CartPage(
             cart: args['cart'],

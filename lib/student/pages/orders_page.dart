@@ -31,33 +31,24 @@ class _OrdersPageState extends State<OrdersPage>
     super.dispose();
   }
 
+
+
   bool _isOrderExpired(Timestamp timestamp) {
     final DateTime orderTime = timestamp.toDate();
     final now = DateTime.now();
-    final mealTimings = getMealTimings();
-    for (var range in mealTimings.values) {
+    final mealTimes = getMealTimings();
+    for (var range in mealTimes.values) {
       // Ensure we are comparing dates on the same day for meal timings
-      final start = DateTime(
-        orderTime.year,
-        orderTime.month,
-        orderTime.day,
-        range.start.hour,
-        range.start.minute,
-      );
-      final end = DateTime(
-        orderTime.year,
-        orderTime.month,
-        orderTime.day,
-        range.end.hour,
-        range.end.minute,
-      );
+      final start = DateTime(orderTime.year, orderTime.month, orderTime.day, range.start.hour, range.start.minute);
+      final end = DateTime(orderTime.year, orderTime.month, orderTime.day, range.end.hour, range.end.minute);
 
       // Check if the order was placed within a meal time range
-      if (orderTime.isAfter(start.subtract(const Duration(seconds: 1))) &&
-          orderTime.isBefore(end.add(const Duration(seconds: 1)))) {
+      if (orderTime.isAfter(start.subtract(const Duration(seconds: 1))) && orderTime.isBefore(end.add(const Duration(seconds: 1)))) {
         return now.isAfter(end);
       }
     }
+    // If the order time doesn't fall within any defined meal window, consider it expired
+    // or handle as per your application's logic. For now, returning true.
     // If the order time doesn't fall within any defined meal window, consider it expired
     // or handle as per your application's logic. For now, returning true.
     return true;
@@ -119,25 +110,17 @@ class _OrdersPageState extends State<OrdersPage>
         ),
       );
 
-      itemWidgets.addAll(
-        generalMenu.map((item) {
-          return Card(
-            elevation: 2,
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            child: ListTile(
-              leading: const Icon(
-                Icons.restaurant_menu,
-                color: Colors.deepPurple,
-              ),
-              title: Text(item['name'] ?? 'Unnamed Item'),
-              trailing: Text(
-                "x${item['quantity'] ?? 0}",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-          );
-        }).toList(),
-      );
+      itemWidgets.addAll(generalMenu.map((item) {
+        return Card(
+          elevation: 2,
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: const Icon(Icons.restaurant_menu, color: Colors.deepPurple),
+            title: Text(item['name'] ?? 'Unnamed Item'),
+            trailing: Text("x${item['quantity'] ?? 0}", style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        );
+      }).toList());
     }
 
     final extraMenu = data['extra_menu'];
@@ -154,22 +137,17 @@ class _OrdersPageState extends State<OrdersPage>
         ),
       );
 
-      itemWidgets.addAll(
-        parsedExtraMenu.map((item) {
-          return Card(
-            elevation: 2,
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            child: ListTile(
-              leading: const Icon(Icons.local_dining, color: Colors.orange),
-              title: Text(item['name'] ?? 'Unnamed Extra'),
-              trailing: Text(
-                "x${item['quantity'] ?? 0}",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-          );
-        }).toList(),
-      );
+      itemWidgets.addAll(parsedExtraMenu.map((item) {
+        return Card(
+          elevation: 2,
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: const Icon(Icons.local_dining, color: Colors.orange),
+            title: Text(item['name'] ?? 'Unnamed Extra'),
+            trailing: Text("x${item['quantity'] ?? 0}", style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        );
+      }).toList());
     }
 
     showDialog(
@@ -220,22 +198,9 @@ class _OrdersPageState extends State<OrdersPage>
         } else {
           final mealTimings = getMealTimings();
           for (var range in mealTimings.values) {
-            final start = DateTime(
-              orderTime.year,
-              orderTime.month,
-              orderTime.day,
-              range.start.hour,
-              range.start.minute,
-            );
-            final end = DateTime(
-              orderTime.year,
-              orderTime.month,
-              orderTime.day,
-              range.end.hour,
-              range.end.minute,
-            );
-            if (orderTime.isAfter(start.subtract(const Duration(seconds: 1))) &&
-                orderTime.isBefore(end.add(const Duration(seconds: 1)))) {
+            final start = DateTime(orderTime.year, orderTime.month, orderTime.day, range.start.hour, range.start.minute);
+            final end = DateTime(orderTime.year, orderTime.month, orderTime.day, range.end.hour, range.end.minute);
+            if (orderTime.isAfter(start.subtract(const Duration(seconds: 1))) && orderTime.isBefore(end.add(const Duration(seconds: 1)))) {
               displayTime = end;
               timeLabel = data['status'] == 'pending'
                   ? 'Expires at'
@@ -261,16 +226,11 @@ class _OrdersPageState extends State<OrdersPage>
                     const Icon(Icons.receipt_long, color: Colors.deepPurple),
                     const SizedBox(width: 8),
                     Expanded(
-                      // Use Expanded for the order ID text
                       child: Text(
                         "Order ID: $orderId",
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow:
-                            TextOverflow.ellipsis, // Add ellipsis for overflow
-                        maxLines: 1, // Ensure it's on a single line
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                       ),
                     ),
                   ],
@@ -293,13 +253,11 @@ class _OrdersPageState extends State<OrdersPage>
                       const Icon(Icons.access_time, color: Colors.blueGrey),
                       const SizedBox(width: 8),
                       Expanded(
-                        // <--- THIS IS THE KEY CHANGE
                         child: Text(
                           "$timeLabel: ${DateFormat('dd/MM/yyyy • hh:mm a').format(displayTime)}",
                           style: const TextStyle(fontSize: 14),
-                          overflow: TextOverflow
-                              .ellipsis, // Added to handle long dates
-                          maxLines: 1, // Added to ensure it stays on one line
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
                       ),
                     ],
@@ -369,9 +327,7 @@ class _OrdersPageState extends State<OrdersPage>
             return Center(child: Text("Error: ${snapshot.error}"));
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
-              child: Text("No orders found.", style: TextStyle(fontSize: 16)),
-            );
+            return const Center(child: Text("No orders found.", style: TextStyle(fontSize: 16)));
           }
 
           final activeOrders = <QueryDocumentSnapshot>[];
