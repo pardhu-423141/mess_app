@@ -28,12 +28,12 @@ class CashfreeApi {
         "customer_email": customerEmail,
         "customer_phone": customerPhone,
       },
-      "link_notify": {"send_sms": false, "send_email": false},
+      "link_notify": {"send_sms": false, "send_email": true},
       "link_meta": {
         "return_url": 'messapp://payment-success?order_id=$orderId',
         
         "notify_url":
-            "https://f4c2-223-185-48-52.ngrok-free.app/webhook",
+            "https://44b7c6fc0a11.ngrok-free.app/cashfree-webhook",
         "notes": {"internal_order_id": orderId},
       },
       "link_id": orderId,

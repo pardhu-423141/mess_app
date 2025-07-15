@@ -1,0 +1,30 @@
+{
+  "name": "mess_webhook",
+  "version": "1.0.0",
+  "description": "Webhook server for mess app using Express and Firebase Admin",
+  "main": "webhook_server.js",
+  "scripts": {
+    "start": "node webhook_server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pardhu-423141/mess_app.git"
+  },
+  "keywords": [
+    "express",
+    "firebase",
+    "webhook",
+    "fcm"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/pardhu-423141/mess_app/issues"
+  },
+  "homepage": "https://github.com/pardhu-423141/mess_app#readme",
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "express": "^4.18.2",
+    "firebase-admin": "^13.4.0"
+  }
+}

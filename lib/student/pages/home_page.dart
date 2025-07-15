@@ -6,11 +6,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../login_page.dart';
 import '../../services/notification_service.dart';
-import '../../manager/add_extra_menu.dart';
-
+import '../../utils/meal_utils.dart';
+import './rating_popup.dart';
+import '../../utils/reservation_cleanup.dart';
 // --- Existing Meal Time Utilities (no changes needed here) ---
 
 
@@ -91,6 +92,10 @@ String getCurrentActualDayString() {
 }
 // --- End Meal Time Utilities ---
 
+// NEW: Define a global or accessible ValueNotifier for the cart
+// This allows other widgets to listen to cart changes without rebuilding the whole HomePage.
+final ValueNotifier<Map<String, int>> _cartNotifier = ValueNotifier({});
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -99,10 +104,10 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
-  int _cartItemCount = 0;
-  Map<String, int> _cart = {};
+  // Removed _cartItemCount and _cart as they will be managed by _cartNotifier
   late TabController _tabController;
   String _userGender = '1';
+  static bool _hasShownPopup = false;
 
   @override
   void initState() {
@@ -110,8 +115,36 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _tabController = TabController(length: 2, vsync: this);
     _initializeNotifications();
     _fetchUserGender();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showRatingPopupOnce();
+    });
+    cleanupExpiredReservations();
+    
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (message.notification != null) {
+        final notification = message.notification!;
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(notification.title ?? 'Message'),
+            content: Text(notification.body ?? ''),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('OK'),
+              )
+            ],
+          ),
+        );
+      }
+});
   }
-
+  void _showRatingPopupOnce() {
+    if (!_hasShownPopup) {
+      _hasShownPopup = true; // mark as shown
+      RatingPopup.show(context);
+    }
+  }
   @override
   void dispose() {
     _tabController.dispose();
@@ -137,22 +170,56 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   Future<void> _initializeNotifications() async {
-    try {
-      await NotificationService.initialize();
+  try {
+    await NotificationService.initialize();
 
-      final prefs = await SharedPreferences.getInstance();
-      final alreadyPrompted = prefs.getBool('notificationsPrompted') ?? false;
-      final isGranted = await NotificationService.areNotificationsEnabled();
+    final prefs = await SharedPreferences.getInstance();
+    final alreadyPrompted = prefs.getBool('notificationsPrompted') ?? false;
+    final isGranted = await NotificationService.areNotificationsEnabled();
 
-      if (alreadyPrompted || isGranted || !mounted) return;
-
-      if (mounted) {
-        _showPermissionDialog(prefs);
-      }
-    } catch (e) {
-      debugPrint('Error initializing notifications: $e');
+    if (!alreadyPrompted && !isGranted && mounted) {
+      _showPermissionDialog(prefs);
     }
+
+    // ✅ Step 1: Request push permission (for iOS, web)
+    await FirebaseMessaging.instance.requestPermission();
+
+    // ✅ Step 2: Get FCM token
+    final token = await FirebaseMessaging.instance.getToken();
+    debugPrint('📲 FCM Token: $token');
+
+    // ✅ Step 3: Get current user
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user != null && token != null) {
+      final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+      // ✅ Use set with merge: true to avoid update failure if document doesn't exist
+      await userRef.set(
+            {'fcm_token': token},
+            SetOptions(merge: true), // Use merge to only update the 'profile' field
+          );
+      debugPrint('✅ FCM token saved to Firestore for user: ${user.uid}');
+    } else {
+      debugPrint('❌ User or token is null');
+    }
+
+    // ✅ Step 4: Handle token refresh
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      final refreshedUser = FirebaseAuth.instance.currentUser;
+      if (refreshedUser != null) {
+        final userRef =
+            FirebaseFirestore.instance.collection('users').doc(refreshedUser.uid);
+        await userRef.set({'fcm_Token': newToken}, SetOptions(merge: true));
+        debugPrint('🔄 FCM token refreshed and updated in Firestore');
+      }
+    });
+  } catch (e) {
+    debugPrint('❌ Error in _initializeNotifications: $e');
   }
+}
+
+
 
   void _showPermissionDialog(SharedPreferences prefs) {
     if (!mounted) return;
@@ -215,49 +282,45 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
+  // Updated cart manipulation methods to use _cartNotifier
   void _addToCart(String menuId, String collection) {
     final cartKey = '${collection}_$menuId';
-    setState(() {
-      _cart.update(cartKey, (value) => value + 1, ifAbsent: () => 1);
-      _updateCartItemCount();
-    });
+    final currentCart = Map<String, int>.from(_cartNotifier.value); // Create a mutable copy
+    currentCart.update(cartKey, (value) => value + 1, ifAbsent: () => 1);
+    _cartNotifier.value = currentCart; // Update the ValueNotifier
   }
 
   void _removeFromCart(String menuId, String collection) {
     final cartKey = '${collection}_$menuId';
-    setState(() {
-      if (_cart.containsKey(cartKey)) {
-        if (_cart[cartKey]! > 1) {
-          _cart[cartKey] = _cart[cartKey]! - 1;
-        } else {
-          _cart.remove(cartKey);
-        }
-        _updateCartItemCount();
+    final currentCart = Map<String, int>.from(_cartNotifier.value); // Create a mutable copy
+    if (currentCart.containsKey(cartKey)) {
+      if (currentCart[cartKey]! > 1) {
+        currentCart[cartKey] = currentCart[cartKey]! - 1;
+      } else {
+        currentCart.remove(cartKey);
       }
-    });
+      _cartNotifier.value = currentCart; // Update the ValueNotifier
+    }
   }
 
-  void _updateCartItemCount() {
-    _cartItemCount = _cart.values.fold(0, (sum, quantity) => sum + quantity);
-  }
+  // _updateCartItemCount is no longer needed here as ValueListenableBuilder will handle it
 
-  void _navigateToCart() {
-    Navigator.pushNamed(
-      context,
-      '/cart',
-      arguments: {
-        'cart': _cart,
-        'onCartUpdated': (Map<String, int> updatedCart) {
-          if (mounted) {
-            setState(() {
-              _cart = updatedCart;
-              _updateCartItemCount();
-            });
-          }
-        },
+  void _navigateToCart() async {
+  final updatedCart = await Navigator.pushNamed(
+    context,
+    '/cart',
+    arguments: {
+      'cart': _cartNotifier.value,
+      'onCartUpdated': (Map<String, int> updatedCart) {
+        _cartNotifier.value = updatedCart;
       },
-    );
+    },
+  );
+
+  if (updatedCart is Map<String, int>) {
+    _cartNotifier.value = updatedCart;
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -276,20 +339,27 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           ),
         ],
       ),
+      // Pass the cart functions and userGender to _ExtraMenuPage
       body: _ExtraMenuPage(
-        cart: _cart,
-        onAddToCart: (menuId, collection) => _addToCart(menuId, collection),
-        onRemoveFromCart: (menuId, collection) => _removeFromCart(menuId, collection),
+        onAddToCart: _addToCart,
+        onRemoveFromCart: _removeFromCart,
         userGender: _userGender,
       ),
-      floatingActionButton: _cartItemCount > 0
-          ? FloatingActionButton.extended(
-              icon: const Icon(Icons.shopping_cart_checkout),
-              label: Text('Go to Cart ($_cartItemCount)'),
-              onPressed: _navigateToCart,
-              backgroundColor: Colors.green,
-            )
-          : null,
+      // Use ValueListenableBuilder to rebuild only the FloatingActionButton
+      floatingActionButton: ValueListenableBuilder<Map<String, int>>(
+        valueListenable: _cartNotifier,
+        builder: (context, cartValue, child) {
+          final cartItemCount = cartValue.values.fold(0, (sum, quantity) => sum + quantity);
+          return cartItemCount > 0
+              ? FloatingActionButton.extended(
+                  icon: const Icon(Icons.shopping_cart_checkout),
+                  label: Text('Go to Cart ($cartItemCount)'),
+                  onPressed: _navigateToCart,
+                  backgroundColor: Colors.green,
+                )
+              : const SizedBox.shrink(); // Use SizedBox.shrink() instead of null
+        },
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
@@ -330,14 +400,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 }
 
+// Updated _ExtraMenuPage to be a StatelessWidget and use ValueListenableBuilder
 class _ExtraMenuPage extends StatelessWidget {
-  final Map<String, int> cart;
+  // Removed 'cart' from constructor
   final Function(String, String) onAddToCart;
   final Function(String, String) onRemoveFromCart;
   final String userGender;
 
   const _ExtraMenuPage({
-    required this.cart,
     required this.onAddToCart,
     required this.onRemoveFromCart,
     required this.userGender,
@@ -433,67 +503,71 @@ class _ExtraMenuPage extends StatelessWidget {
                 );
               }
 
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  crossAxisSpacing: crossAxisSpacing,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: dynamicChildAspectRatio,
-                ),
-                itemCount: generalMenuItems.length,
-                itemBuilder: (context, index) {
-                  final doc = generalMenuItems[index];
-                  final data = doc.data() as Map<String, dynamic>;
-                  
-                  final String itemPriceString;
-                  final dynamic priceData = data['price'];
-                  if (priceData is int || priceData is double) {
-                    itemPriceString = priceData.toString();
-                  } else if (priceData is String) {
-                    itemPriceString = priceData;
-                  } else {
-                    itemPriceString = 'N/A';
-                  }
-                  final description = data['description'] ?? 'No description available.';
-                  final imageUrl = data['imageUrl'] as String?;
-                  final double? rating = (data['rating'] as num?)?.toDouble();
+              return ValueListenableBuilder<Map<String, int>>( // Listen to _cartNotifier
+                valueListenable: _cartNotifier,
+                builder: (context, cartValue, child) {
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: crossAxisCount,
+                      crossAxisSpacing: crossAxisSpacing,
+                      mainAxisSpacing: 16,
+                      childAspectRatio: dynamicChildAspectRatio,
+                    ),
+                    itemCount: generalMenuItems.length,
+                    itemBuilder: (context, index) {
+                      final doc = generalMenuItems[index];
+                      final data = doc.data() as Map<String, dynamic>;
+                      
+                      final String itemPriceString;
+                      final dynamic priceData = data['price'];
+                      if (priceData is int || priceData is double) {
+                        itemPriceString = priceData.toString();
+                      } else if (priceData is String) {
+                        itemPriceString = priceData;
+                      } else {
+                        itemPriceString = 'N/A';
+                      }
+                      final description = data['description'] ?? 'No description available.';
+                      final imageUrl = data['imageUrl'] as String?;
+                      final double? rating = (data['rating'] as num?)?.toDouble();
 
-                  final mealRange = getMealTimings()[currentMeal];
-                  final isBookingOpened = mealRange != null &&
-                      now.hour * 60 + now.minute >= mealRange.start.hour * 60 + mealRange.start.minute &&
-                      now.hour * 60 + now.minute <= mealRange.end.hour * 60 + mealRange.end.minute;
+                      final mealRange = getMealTimings()[currentMeal];
+                      final isBookingOpened = mealRange != null &&
+                          now.hour * 60 + now.minute >= mealRange.start.hour * 60 + mealRange.start.minute &&
+                          now.hour * 60 + now.minute <= mealRange.end.hour * 60 + mealRange.end.minute;
 
-                  final bookingClosingTime = getMealClosingTime(currentMeal);
+                      final bookingClosingTime = getMealClosingTime(currentMeal);
 
-                  final cartKey = 'general_menu_${doc.id}';
-                  final int itemCount = cart[cartKey] ?? 0;
+                      final cartKey = 'general_menu_${doc.id}';
+                      final int itemCount = cartValue[cartKey] ?? 0; // Use cartValue from ValueListenableBuilder
 
-                  return _MenuItemCard(
-                    itemName: currentMeal,
-                    itemActualName: data['name'] ?? 'Unnamed Daily Meal',
-                    itemPrice: itemPriceString,
-                    imageUrl: imageUrl,
-                    itemCount: itemCount,
-                    isActive: isBookingOpened,
-                    isAvailableInStock: true,
-                    canAddToCart: isBookingOpened,
-                    onAdd: () => onAddToCart(doc.id, 'general_menu'),
-                    onRemove: () => onRemoveFromCart(doc.id, 'general_menu'),
-                    description: description,
-                    bookingClosingTime: bookingClosingTime,
-                    cardHeight: cardHeight,
-                    cardWidth: cardWidth,
-                    isGeneralMenuItem: true,
-                    rating: rating,
+                      return _MenuItemCard(
+                        itemName: currentMeal,
+                        itemActualName: data['name'] ?? currentMeal,
+                        itemPrice: itemPriceString,
+                        imageUrl: imageUrl,
+                        itemCount: itemCount,
+                        isActive: isBookingOpened,
+                        isAvailableInStock: true,
+                        canAddToCart: isBookingOpened,
+                        onAdd: () => onAddToCart(doc.id, 'general_menu'),
+                        onRemove: () => onRemoveFromCart(doc.id, 'general_menu'),
+                        description: description,
+                        bookingClosingTime: bookingClosingTime,
+                        cardHeight: cardHeight,
+                        cardWidth: cardWidth,
+                        isGeneralMenuItem: true,
+                        rating: rating,
+                      );
+                    },
                   );
                 },
               );
             },
           ),
           // --- Extra Menu Section ---
-          // NEW: StreamBuilder for Extra Menu to determine if the section should be shown
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('extra_menu').snapshots(),
             builder: (context, snapshot) {
@@ -504,7 +578,7 @@ class _ExtraMenuPage extends StatelessWidget {
                 return Center(child: Text('Error: ${snapshot.error}'));
               }
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const SizedBox.shrink(); // Hide if no data at all
+                return const SizedBox.shrink();
               }
 
               final docs = snapshot.data!.docs;
@@ -516,13 +590,11 @@ class _ExtraMenuPage extends StatelessWidget {
 
                 final startTime = (data['startTime'] as Timestamp?)?.toDate();
                 final endTime = (data['endTime'] as Timestamp?)?.toDate();
-                final availableOrders = data['availableOrders'] as int? ?? 0;
-
+                
                 final isBookingOpened = startTime != null && endTime != null && now.isAfter(startTime) && now.isBefore(endTime);
-                final isAvailableInStock = availableOrders > 0;
-                final isActive = isBookingOpened && isAvailableInStock; // Item must be active and in stock
+                final isActive = isBookingOpened && data['status']=='active';
 
-                return genderMatch && mealMatch && hasRequiredFields && isActive; // Only include active items
+                return genderMatch && mealMatch && hasRequiredFields && isActive;
               }).toList();
 
               displayDocs.sort((a, b) {
@@ -549,15 +621,14 @@ class _ExtraMenuPage extends StatelessWidget {
                 return nameA.compareTo(nameB);
               });
 
-              // NEW: Conditional rendering of the entire "Extra Menu" section
               if (displayDocs.isEmpty) {
-                return const SizedBox.shrink(); // Hide the entire section if no active items
+                return const SizedBox.shrink();
               }
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 20), // Spacer before the header
+                  const SizedBox(height: 20),
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
                     child: Text(
@@ -565,61 +636,66 @@ class _ExtraMenuPage extends StatelessWidget {
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
                     ),
                   ),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      crossAxisSpacing: crossAxisSpacing,
-                      mainAxisSpacing: 16,
-                      childAspectRatio: dynamicChildAspectRatio,
-                    ),
-                    itemCount: displayDocs.length,
-                    itemBuilder: (context, index) {
-                      final doc = displayDocs[index];
-                      final data = doc.data() as Map<String, dynamic>;
+                  ValueListenableBuilder<Map<String, int>>( // Listen to _cartNotifier
+                    valueListenable: _cartNotifier,
+                    builder: (context, cartValue, child) {
+                      return GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxisCount,
+                          crossAxisSpacing: crossAxisSpacing,
+                          mainAxisSpacing: 16,
+                          childAspectRatio: dynamicChildAspectRatio,
+                        ),
+                        itemCount: displayDocs.length,
+                        itemBuilder: (context, index) {
+                          final doc = displayDocs[index];
+                          final data = doc.data() as Map<String, dynamic>;
 
-                      final String itemPriceString;
-                      final dynamic priceData = data['price'];
-                      if (priceData is int || priceData is double) {
-                        itemPriceString = priceData.toString();
-                      } else if (priceData is String) {
-                        itemPriceString = priceData;
-                      } else {
-                        itemPriceString = 'N/A';
-                      }
+                          final String itemPriceString;
+                          final dynamic priceData = data['price'];
+                          if (priceData is int || priceData is double) {
+                            itemPriceString = priceData.toString();
+                          } else if (priceData is String) {
+                            itemPriceString = priceData;
+                          } else {
+                            itemPriceString = 'N/A';
+                          }
 
-                      final startTime = (data['startTime'] as Timestamp?)?.toDate();
-                      final endTime = (data['endTime'] as Timestamp?)?.toDate();
-                      final availableOrders = data['availableOrders'] as int? ?? 0;
-                      final description = data['description'] ?? 'No description available.';
-                      final imageUrl = data['imageUrl'] as String?;
-                      final double? rating = (data['rating'] as num?)?.toDouble();
+                          final startTime = (data['startTime'] as Timestamp?)?.toDate();
+                          final endTime = (data['endTime'] as Timestamp?)?.toDate();
+                          final availableOrders = data['availableOrders'] as int? ?? 0;
+                          final description = data['description'] ?? 'No description available.';
+                          final imageUrl = data['imageUrl'] as String?;
+                          final double? rating = (data['rating'] as num?)?.toDouble();
 
-                      final isBookingOpened = startTime != null && endTime != null && now.isAfter(startTime) && now.isBefore(endTime);
-                      final isAvailableInStock = availableOrders > 0;
-                      final isActive = isBookingOpened && isAvailableInStock;
+                          final isBookingOpened = startTime != null && endTime != null && now.isAfter(startTime) && now.isBefore(endTime);
+                          final isAvailableInStock = availableOrders > 0;
+                          final isActive = isBookingOpened && isAvailableInStock;
 
-                      final cartKey = 'extra_menu_${doc.id}';
-                      final int itemCount = cart[cartKey] ?? 0;
+                          final cartKey = 'extra_menu_${doc.id}';
+                          final int itemCount = cartValue[cartKey] ?? 0; // Use cartValue from ValueListenableBuilder
 
-                      return _MenuItemCard(
-                        itemName: data['name'] ?? 'Unnamed Item',
-                        itemActualName: data['name'] ?? 'Unnamed Item',
-                        itemPrice: itemPriceString,
-                        imageUrl: imageUrl,
-                        itemCount: itemCount,
-                        isActive: isActive,
-                        isAvailableInStock: isAvailableInStock,
-                        canAddToCart: itemCount < availableOrders && isActive,
-                        onAdd: () => onAddToCart(doc.id, 'extra_menu'),
-                        onRemove: () => onRemoveFromCart(doc.id, 'extra_menu'),
-                        description: description,
-                        bookingClosingTime: endTime,
-                        cardHeight: cardHeight,
-                        cardWidth: cardWidth,
-                        isGeneralMenuItem: false,
-                        rating: rating,
+                          return _MenuItemCard(
+                            itemName: data['name'] ?? 'Unnamed Item',
+                            itemActualName: data['name'] ?? 'Unnamed Item',
+                            itemPrice: itemPriceString,
+                            imageUrl: imageUrl,
+                            itemCount: itemCount,
+                            isActive: isActive,
+                            isAvailableInStock: isAvailableInStock,
+                            canAddToCart: itemCount < availableOrders && isActive,
+                            onAdd: () => onAddToCart(doc.id, 'extra_menu'),
+                            onRemove: () => onRemoveFromCart(doc.id, 'extra_menu'),
+                            description: description,
+                            bookingClosingTime: endTime,
+                            cardHeight: cardHeight,
+                            cardWidth: cardWidth,
+                            isGeneralMenuItem: false,
+                            rating: rating,
+                          );
+                        },
                       );
                     },
                   ),
@@ -665,13 +741,12 @@ class _MenuItemCard extends StatelessWidget {
     required this.onRemove,
     required this.description,
     this.bookingClosingTime,
-    required this.cardHeight,
-    required this.cardWidth,
+    required this.cardHeight, // Crucial for sizing
+    required this.cardWidth,  // Crucial for sizing
     required this.isGeneralMenuItem,
     this.rating,
   });
 
-  
   void _showDetailsPopup(BuildContext context) {
     showDialog(
       context: context,
@@ -740,11 +815,11 @@ class _MenuItemCard extends StatelessWidget {
                           padding: const EdgeInsets.only(bottom: 10.0),
                           child: Row(
                             children: [
-                              Icon(Icons.star, color: Colors.amber, size: 20),
+                              const Icon(Icons.star, color: Colors.amber, size: 20),
                               const SizedBox(width: 8),
                               Text(
                                 "Rating: ${rating!.toStringAsFixed(1)}",
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                               ),
                             ],
                           ),
@@ -785,17 +860,13 @@ class _MenuItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double imageSectionHeight = cardHeight * 0.60;
-    final double nameSectionHeight = cardHeight * 0.10;
-    final double detailsSectionHeight = cardHeight * 0.07;
-
+    // Define min/max font sizes to control scaling.
     const double minItemNameFontSize = 10.0;
     const double maxItemNameFontSize = 13.0;
     const double minDetailsFontSize = 7.0;
     const double maxDetailsFontSize = 9.0;
     const double minPriceFontSize = 9.0;
     const double maxPriceFontSize = 12.0;
-
     const double minAddButtonTextSize = 9.0;
     const double maxAddButtonTextSize = 12.0;
     const double minIconSize = 13.0;
@@ -803,235 +874,265 @@ class _MenuItemCard extends StatelessWidget {
     const double minCounterTextSize = 11.0;
     const double maxCounterTextSize = 13.0;
 
-    const double horizontalContentPadding = 4.0;
-
-    return Card(
-      elevation: 6,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            height: imageSectionHeight,
-            child: Stack(
-              children: [
-                if (imageUrl != null && imageUrl!.isNotEmpty)
-                  CachedNetworkImage(
-                    imageUrl: imageUrl!,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: imageSectionHeight,
-                    placeholder: (context, url) => Container(
-                      color: Colors.grey[200],
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Theme.of(context).primaryColor,
-                          strokeWidth: 2,
+    return SizedBox(
+      width: cardWidth,
+      height: cardHeight,
+      child: Card(
+        elevation: 3,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => _showDetailsPopup(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Image Section (takes 60% of the card's vertical space)
+              Expanded(
+                flex: 6,
+                child: imageUrl != null && imageUrl!.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: imageUrl!,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          color: Colors.grey[200],
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: Theme.of(context).primaryColor,
+                              strokeWidth: 2,
+                            ),
+                          ),
                         ),
+                        errorWidget: (context, url, error) => Container(
+                          color: Colors.grey[200],
+                          child: const Center(child: Icon(Icons.fastfood, size: 50, color: Colors.grey)),
+                        ),
+                      )
+                    : Container(
+                        color: Colors.grey[200],
+                        child: const Center(child: Icon(Icons.fastfood, size: 50, color: Colors.grey)),
                       ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      color: Colors.grey[200],
-                      child: Center(child: Icon(Icons.broken_image, size: cardHeight * 0.15, color: Colors.grey)),
-                    ),
-                  )
-                else
-                  Container(
-                    width: double.infinity,
-                    height: imageSectionHeight,
-                    color: Colors.grey[200],
-                    child: Center(child: Icon(Icons.fastfood, size: cardHeight * 0.15, color: Colors.grey)),
-                  ),
-                Positioned(
-                  top: 8,
-                  left: 8,
-                  child: rating != null && rating! > 0
-                      ? Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.6),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.star, color: Colors.yellow, size: 18),
-                              const SizedBox(width: 4),
-                              Text(
-                                rating!.toStringAsFixed(1),
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
-                Positioned(
-                  bottom: 2,
-                  right: 2,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: Text(
-                      "₹$itemPrice",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: (imageSectionHeight * 0.08).clamp(minPriceFontSize, maxPriceFontSize),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: nameSectionHeight,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: horizontalContentPadding, vertical: 1.0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  itemName,
-                  style: TextStyle(
-                    fontSize: (nameSectionHeight * 0.6).clamp(minItemNameFontSize, maxItemNameFontSize),
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
               ),
-            ),
-          ),
-          SizedBox(
-            height: detailsSectionHeight,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: horizontalContentPadding, vertical: 0.0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: InkWell(
-                  onTap: () {
-                    debugPrint('Details text tapped for: ${isGeneralMenuItem ? itemActualName : itemName}');
-                    _showDetailsPopup(context);
-                  },
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+              // Text Content Section + Cart Controls (takes 40% of the card's vertical space)
+              Expanded(
+                flex: 4,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween, // Distribute space between children
+                    mainAxisSize: MainAxisSize.max, // Take all available space within Expanded
                     children: [
-                      Icon(Icons.info_outline,
-                          color: Colors.blue,
-                          size: (detailsSectionHeight * 0.8).clamp(minDetailsFontSize + 1, maxDetailsFontSize + 1)),
-                      const SizedBox(width: 2),
-                      Flexible(
-                        child: Text(
-                          'Details',
-                          style: TextStyle(
-                            fontSize: (detailsSectionHeight * 0.6).clamp(minDetailsFontSize, maxDetailsFontSize),
-                            color: Colors.blue,
-                            decoration: TextDecoration.underline,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
+                      // Item Name
+                      Text(
+                        isGeneralMenuItem ? itemActualName : itemName,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: cardWidth * 0.1 > maxItemNameFontSize
+                              ? maxItemNameFontSize
+                              : (cardWidth * 0.1 < minItemNameFontSize ? minItemNameFontSize : cardWidth * 0.1),
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+
+                      // Item Price
+                      Text(
+                        "₹$itemPrice",
+                        style: TextStyle(
+                          color: Theme.of(context).primaryColor,
+                          fontSize: cardWidth * 0.08 > maxPriceFontSize
+                              ? maxPriceFontSize
+                              : (cardWidth * 0.08 < minPriceFontSize ? minPriceFontSize : cardWidth * 0.08),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+
+                      // Rating
+                      if (rating != null && rating! > 0)
+                        Row(
+                          children: [
+                            Icon(Icons.star,
+                                color: Colors.amber,
+                                size: cardWidth * 0.07 > maxIconSize ? maxIconSize : cardWidth * 0.07),
+                            const SizedBox(width: 4),
+                            Text(
+                              rating!.toStringAsFixed(1),
+                              style: TextStyle(
+                                fontSize: cardWidth * 0.07 > maxDetailsFontSize
+                                    ? maxDetailsFontSize
+                                    : (cardWidth * 0.07 < minDetailsFontSize ? minDetailsFontSize : cardWidth * 0.07),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      
+                      // Spacer to push cart controls to the bottom
+                      const Spacer(),
+
+                      // Cart Controls
+                      _buildCartControls(
+                        context,
+                        itemCount,
+                        isActive,
+                        isAvailableInStock,
+                        canAddToCart,
+                        onAdd,
+                        onRemove,
+                        cardWidth,
+                        minAddButtonTextSize,
+                        maxAddButtonTextSize,
+                        minIconSize,
+                        maxIconSize,
+                        minCounterTextSize,
+                        maxCounterTextSize,
                       ),
                     ],
                   ),
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCartControls(
+    BuildContext context,
+    int itemCount,
+    bool isActive,
+    bool isAvailableInStock,
+    bool canAddToCart,
+    VoidCallback onAdd,
+    VoidCallback onRemove,
+    double cardWidth,
+    double minAddButtonTextSize,
+    double maxAddButtonTextSize,
+    double minIconSize,
+    double maxIconSize,
+    double minCounterTextSize,
+    double maxCounterTextSize,
+  ) {
+    if (!isActive) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Text(
+          isGeneralMenuItem ? 'Booking Closed' : 'Unavailable',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: cardWidth * 0.08 > maxAddButtonTextSize
+                ? maxAddButtonTextSize
+                : (cardWidth * 0.08 < minAddButtonTextSize ? minAddButtonTextSize : cardWidth * 0.08),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+    }
+
+    if (!isAvailableInStock && !isGeneralMenuItem) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Text(
+          'Out of Stock',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: cardWidth * 0.08 > maxAddButtonTextSize
+                ? maxAddButtonTextSize
+                : (cardWidth * 0.08 < minAddButtonTextSize ? minAddButtonTextSize : cardWidth * 0.08),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+    }
+
+    if (itemCount > 0) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _buildActionButton(
+            icon: Icons.remove,
+            onPressed: onRemove,
+            iconSize: cardWidth * 0.09 > maxIconSize ? maxIconSize : (cardWidth * 0.09 < minIconSize ? minIconSize : cardWidth * 0.09),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: Text(
+              '$itemCount',
+              style: TextStyle(
+                fontSize: cardWidth * 0.1 > maxCounterTextSize
+                    ? maxCounterTextSize
+                    : (cardWidth * 0.1 < minCounterTextSize ? minCounterTextSize : cardWidth * 0.1),
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final double addOptionAvailableHeight = constraints.maxHeight;
-
-                final double addButtonTextSize =
-                    (addOptionAvailableHeight * 0.35).clamp(minAddButtonTextSize, maxAddButtonTextSize);
-                final double iconSize = (addOptionAvailableHeight * 0.45).clamp(minIconSize, maxIconSize);
-                final double counterTextSize =
-                    (addOptionAvailableHeight * 0.38).clamp(minCounterTextSize, maxCounterTextSize);
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: horizontalContentPadding, vertical: 0.0),
-                  child: Center(
-                    child: isActive
-                        ? itemCount == 0
-                            ? SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  onPressed: canAddToCart ? onAdd : null,
-                                  style: ElevatedButton.styleFrom(
-                                    visualDensity: VisualDensity.compact,
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                                    backgroundColor: Colors.lightGreen[400],
-                                    foregroundColor: Colors.white,
-                                    textStyle:
-                                        TextStyle(fontSize: addButtonTextSize, fontWeight: FontWeight.bold),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                                    minimumSize:
-                                        Size.fromHeight(addOptionAvailableHeight * 0.8),
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  child: const Text('Add'),
-                                ),
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.remove_circle),
-                                    color: Colors.redAccent,
-                                    onPressed: itemCount > 0 ? onRemove : null,
-                                    iconSize: iconSize,
-                                    padding: EdgeInsets.zero,
-                                    constraints: BoxConstraints(minWidth: iconSize, minHeight: iconSize),
-                                    splashRadius: iconSize * 0.7,
-                                  ),
-                                  Flexible(
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 1.0),
-                                      child: Text(
-                                        itemCount.toString(),
-                                        style: TextStyle(fontSize: counterTextSize, fontWeight: FontWeight.bold),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.add_circle),
-                                    color: Colors.green,
-                                    onPressed: canAddToCart ? onAdd : null,
-                                    iconSize: iconSize,
-                                    padding: EdgeInsets.zero,
-                                    constraints: BoxConstraints(minWidth: iconSize, minHeight: iconSize),
-                                    splashRadius: iconSize * 0.7,
-                                  ),
-                                ],
-                              )
-                        : Text(
-                            isAvailableInStock ? "Not available now" : "Sold Out",
-                            style: TextStyle(color: Colors.grey, fontSize: addButtonTextSize),
-                            textAlign: TextAlign.center,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                  ),
-                );
-              },
-            ),
+          _buildActionButton(
+            icon: Icons.add,
+            onPressed: canAddToCart ? onAdd : null,
+            iconSize: cardWidth * 0.09 > maxIconSize ? maxIconSize : (cardWidth * 0.09 < minIconSize ? minIconSize : cardWidth * 0.09),
           ),
         ],
+      );
+    } else {
+      return SizedBox( // Use SizedBox here to ensure consistent height for the button
+        width: double.infinity,
+        height: cardWidth * 0.12, // Approximate height for the button to be consistent
+        child: ElevatedButton(
+          onPressed: canAddToCart ? onAdd : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: canAddToCart ? Theme.of(context).primaryColor : Colors.grey,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(5),
+            ),
+            padding: EdgeInsets.zero, // Remove default padding to let content control size
+          ),
+          child: Text(
+            'Add to Cart',
+            style: TextStyle(
+              fontSize: cardWidth * 0.08 > maxAddButtonTextSize
+                  ? maxAddButtonTextSize
+                  : (cardWidth * 0.08 < minAddButtonTextSize ? minAddButtonTextSize : cardWidth * 0.08),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required VoidCallback? onPressed,
+    required double iconSize,
+  }) {
+    // Ensure the button itself has a fixed size based on iconSize
+    final double buttonSize = iconSize * 1.8; // A factor to make the circle larger than the icon
+    return SizedBox(
+      width: buttonSize,
+      height: buttonSize,
+      child: FittedBox( // Use FittedBox to scale the IconButton if necessary
+        child: IconButton(
+          icon: Icon(icon, color: Colors.green),
+          onPressed: onPressed,
+          padding: EdgeInsets.zero, // Essential for tight spacing
+          constraints: const BoxConstraints(), // Removes default minimum constraints
+        ),
       ),
     );
   }

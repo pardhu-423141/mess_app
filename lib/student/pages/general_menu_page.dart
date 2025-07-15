@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../manager/add_extra_menu.dart'; // Ensure this file has getMealTimings and TimeRange
+import '../../utils/meal_utils.dart'; // Ensure this file has getMealTimings and TimeRange
 
 class GeneralMenuPage extends StatefulWidget {
   const GeneralMenuPage({super.key});
