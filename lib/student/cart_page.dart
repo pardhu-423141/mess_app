@@ -17,6 +17,9 @@ class CartPage extends StatefulWidget {
 class _CartPageState extends State<CartPage> {
   Map<String, int> _cart = {};
   bool _isLoading = false;
+  // Store fetched item details here
+  Map<String, dynamic> _itemsData = {};
+  bool _dataFetched = false; // To track if initial data fetch is complete
 
   @override
   void initState() {
