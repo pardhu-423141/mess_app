@@ -14,7 +14,8 @@ class OrdersPage extends StatefulWidget {
   State<OrdersPage> createState() => _OrdersPageState();
 }
 
-class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateMixin {
+class _OrdersPageState extends State<OrdersPage>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final currentUser = FirebaseAuth.instance.currentUser;
 
@@ -29,6 +30,8 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     _tabController.dispose();
     super.dispose();
   }
+
+
 
   bool _isOrderExpired(Timestamp timestamp) {
     final DateTime orderTime = timestamp.toDate();
@@ -46,6 +49,8 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     }
     // If the order time doesn't fall within any defined meal window, consider it expired
     // or handle as per your application's logic. For now, returning true.
+    // If the order time doesn't fall within any defined meal window, consider it expired
+    // or handle as per your application's logic. For now, returning true.
     return true;
   }
 
@@ -54,7 +59,9 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
       'order_id': orderData['order_id'],
       'amount': orderData['amount'],
       'user_id': orderData['user_id'],
-      'timestamp': (orderData['created on'] as Timestamp).toDate().toIso8601String(),
+      'timestamp': (orderData['created on'] as Timestamp)
+          .toDate()
+          .toIso8601String(),
       'QR_id': orderData['QR_id'],
     };
 
@@ -80,7 +87,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
           TextButton(
             child: const Text("Close"),
             onPressed: () => Navigator.pop(context),
-          )
+          ),
         ],
       ),
     );
@@ -89,12 +96,19 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
   void _showOrderDetailsDialog(Map<String, dynamic> data) {
     final List<Widget> itemWidgets = [];
 
-    final generalMenu = data['general_menu'] is List ? data['general_menu'] as List<dynamic> : [];
+    final generalMenu = data['general_menu'] is List
+        ? data['general_menu'] as List<dynamic>
+        : [];
     if (generalMenu.isNotEmpty) {
-      itemWidgets.add(const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8),
-        child: Text("General Menu", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-      ));
+      itemWidgets.add(
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            "General Menu",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+      );
 
       itemWidgets.addAll(generalMenu.map((item) {
         return Card(
@@ -113,10 +127,15 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     final parsedExtraMenu = extraMenu is List ? extraMenu : [];
 
     if (parsedExtraMenu.isNotEmpty) {
-      itemWidgets.add(const Padding(
-        padding: EdgeInsets.only(top: 16, bottom: 8),
-        child: Text("Extra Menu", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-      ));
+      itemWidgets.add(
+        const Padding(
+          padding: EdgeInsets.only(top: 16, bottom: 8),
+          child: Text(
+            "Extra Menu",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+      );
 
       itemWidgets.addAll(parsedExtraMenu.map((item) {
         return Card(
@@ -151,9 +170,14 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildOrderList(List<QueryDocumentSnapshot> orders, bool showGenerate) {
+  Widget _buildOrderList(
+    List<QueryDocumentSnapshot> orders,
+    bool showGenerate,
+  ) {
     if (orders.isEmpty) {
-      return const Center(child: Text("No orders available", style: TextStyle(fontSize: 16)));
+      return const Center(
+        child: Text("No orders available", style: TextStyle(fontSize: 16)),
+      );
     }
 
     return ListView.builder(
@@ -178,7 +202,9 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
             final end = DateTime(orderTime.year, orderTime.month, orderTime.day, range.end.hour, range.end.minute);
             if (orderTime.isAfter(start.subtract(const Duration(seconds: 1))) && orderTime.isBefore(end.add(const Duration(seconds: 1)))) {
               displayTime = end;
-              timeLabel = data['status'] == 'pending' ? 'Expires at' : 'Expired at';
+              timeLabel = data['status'] == 'pending'
+                  ? 'Expires at'
+                  : 'Expired at';
               break;
             }
           }
@@ -186,7 +212,9 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
 
         return Card(
           margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           elevation: 4,
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -212,7 +240,10 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                   children: [
                     const Icon(Icons.monetization_on, color: Colors.green),
                     const SizedBox(width: 8),
-                    Text("Amount: ₹$amount", style: const TextStyle(fontSize: 14)),
+                    Text(
+                      "Amount: ₹$amount",
+                      style: const TextStyle(fontSize: 14),
+                    ),
                   ],
                 ),
                 if (displayTime != null) ...[
@@ -244,7 +275,9 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.deepPurple,
                           foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
                     const SizedBox(width: 8),
@@ -254,7 +287,7 @@ class _OrdersPageState extends State<OrdersPage> with SingleTickerProviderStateM
                       label: const Text("Details"),
                     ),
                   ],
-                )
+                ),
               ],
             ),
           ),
