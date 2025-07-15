@@ -69,7 +69,7 @@ Future<void> _submitData() async {
     'ID': id,
     'description': description,
     'hostel': hostel,
-    'photo': imageUrl,
+    'imageUrl': imageUrl,
     'price': price,
     'rating': 0,
     'status' : 'active',

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:barcode_scan2/barcode_scan2.dart';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
+import './notify.dart';
 class ScanQR extends StatefulWidget {
   @override
   _ScanQRState createState() => _ScanQRState();
@@ -157,25 +157,43 @@ class _ScanQRState extends State<ScanQR> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(title: const Text("QR Scanner & Mess Controls")),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text("Scan Result", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-            SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: _scanQRCode,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                side: BorderSide(color: Colors.indigo),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                padding: EdgeInsets.all(16),
-              ),
-              child: Text("Open Scanner", style: TextStyle(color: Colors.indigo)),
-            ),
-          ],
-        ),
+  mainAxisAlignment: MainAxisAlignment.center,
+  children: [
+    Text("Scan Result", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+    SizedBox(height: 10),
+    ElevatedButton(
+      onPressed: _scanQRCode,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        side: BorderSide(color: Colors.indigo),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        padding: EdgeInsets.all(16),
+      ),
+      child: Text("Open Scanner", style: TextStyle(color: Colors.indigo)),
+    ),
+    SizedBox(height: 20),
+    ElevatedButton(
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const NotifyPage()),
+        );
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.indigo,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        padding: EdgeInsets.all(16),
+      ),
+      child: const Text('Open Notification Page'),
+    ),
+  ],
+),
+
       ),
     );
   }

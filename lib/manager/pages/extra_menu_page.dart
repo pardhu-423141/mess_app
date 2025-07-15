@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import '../add_extra_menu.dart'; // contains getMealTimings()
+import '../../utils/meal_utils.dart'; // contains getMealTimings()
 
 class ExtraMenuPage extends StatelessWidget {
   const ExtraMenuPage({super.key});

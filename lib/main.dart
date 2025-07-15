@@ -4,7 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mess_app/manager/pages/general_menu_viewer.dart';
-import 'package:mess_app/student/cart_page.dart';
+import 'package:mess_app/student/cart/cart_page.dart';
 import 'package:flutter/services.dart';
 
 import 'firebase_options.dart';
@@ -21,13 +21,22 @@ import 'manager/add_extra_menu.dart'; // Make sure this file exists
 import 'manager/pages/extra_menu_page.dart'; // Make sure this file exists
 import 'student/pages/redirect_page.dart';
 import 'package:app_links/app_links.dart';
+import 'student/pages/rating_popup.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
+
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  // You can handle background notification logic here
+  print("🔔 BG Message: ${message.messageId}");
+}
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
@@ -47,6 +56,9 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _initDeepLinkHandler();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      RatingPopup.show(context);
+    });
   }
 
   Future<void> _initDeepLinkHandler() async {
