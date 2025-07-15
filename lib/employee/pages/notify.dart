@@ -5,7 +5,7 @@ class NotifyPage extends StatelessWidget {
   const NotifyPage({super.key});
 
   Future<void> _sendNotification(String type) async {
-    final uri = Uri.parse('https://32cb3a837005.ngrok-free.app/$type'); // Replace with your server URL
+    final uri = Uri.parse('https://mess-app-yanx.onrender.com/$type'); // Replace with your server URL
     try {
       final response = await http.post(uri);
       if (response.statusCode == 200) {
