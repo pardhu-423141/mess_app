@@ -33,7 +33,7 @@ class CashfreeApi {
         "return_url": 'messapp://payment-success?order_id=$orderId',
         
         "notify_url":
-            "https://mess-app-yanx.onrender.com/cashfree-webhook",
+            "https://mess-app-gwvg.onrender.com/cashfree-webhook",
         "notes": {"internal_order_id": orderId},
       },
       "link_id": orderId,
