@@ -50,14 +50,38 @@ app.post('/messEnd', async (req, res) => {
 });
 
 // 🔔 Endpoint: Receive webhook from Cashfree
-app.post('/cashfree-webhook', (req, res) => {
+app.post('/cashfree-webhook', async (req, res) => {
   console.log('🔔 Webhook received from Cashfree:');
-  console.log(req.body);
+  const data = req.body;
+  console.log(data);
 
-  // TODO: Optional: Verify x-cashfree-signature for security
+  const { orderId, txStatus } = data;
 
-  res.sendStatus(200); // acknowledge receipt
+  // Basic validation
+  if (!orderId || !txStatus) {
+    console.error('❌ Missing orderId or txStatus in webhook');
+    return res.status(400).send({ error: 'Invalid webhook data' });
+  }
+
+  try {
+    const orderRef = db.collection('orders').doc(orderId);
+
+    // Update payment_status field
+    if (txStatus === 'SUCCESS') {
+      await orderRef.update({ payment_status: 'success' });
+      console.log(`✅ Payment success for order ${orderId}`);
+    } else {
+      await orderRef.update({ payment_status: 'failed' });
+      console.log(`❌ Payment failed for order ${orderId}`);
+    }
+
+    res.sendStatus(200); // Acknowledge webhook
+  } catch (error) {
+    console.error('🔥 Firestore update error:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
 });
+
 
 // 🟢 Start server
 const PORT = process.env.PORT || 3000;
