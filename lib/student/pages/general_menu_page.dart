@@ -16,7 +16,7 @@ class _GeneralMenuPageState extends State<GeneralMenuPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String _userGender = '1'; // Default to boys, will be replaced by actual fetch
-
+  bool _isLoading = true; 
   final Map<String, String> dayMap = {
     "Monday": "1",
     "Tuesday": "2",
@@ -67,34 +67,39 @@ class _GeneralMenuPageState extends State<GeneralMenuPage>
           final userData = userDoc.data()!;
           if (mounted) {
             setState(() {
-              _userGender = userData['Sex']?.toString() ?? '1';
+              _userGender = userData['mess']?.toString() ?? '1';
+              _isLoading = false; // <-- Done loading
             });
           }
         } else {
+          print("User document does not exist or is empty.");
           if (mounted) {
             setState(() {
               _userGender = '1';
+              _isLoading = false; // <-- Done loading
             });
           }
-          print("User document for ${user.uid} does not exist or is empty.");
         }
       } catch (e) {
         print("Error fetching user gender: $e");
         if (mounted) {
           setState(() {
             _userGender = '1';
+            _isLoading = false; // <-- Done loading
           });
         }
       }
     } else {
+      print("No user logged in.");
       if (mounted) {
         setState(() {
           _userGender = '1';
+          _isLoading = false; // <-- Done loading
         });
       }
-      print("No user logged in.");
     }
   }
+
 
   String _getCurrentMeal() {
     final now = TimeOfDay.now();
@@ -118,6 +123,11 @@ class _GeneralMenuPageState extends State<GeneralMenuPage>
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     String dayCode = dayMap[selectedDay]!;
     String mealCode = mealMap[selectedMeal]!;
     String menuId = "$dayCode$mealCode$_userGender";

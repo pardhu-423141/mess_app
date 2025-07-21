@@ -26,7 +26,7 @@ Map<String, TimeOfDayRange> getMealTimings() {
       end: const TimeOfDay(hour: 10, minute: 0),
     ),
     'Lunch': TimeOfDayRange(
-      start: const TimeOfDay(hour: 10, minute: 30),
+      start: const TimeOfDay(hour: 10, minute: 00),
       end: const TimeOfDay(hour: 15, minute: 30),
     ),
     'Snacks': TimeOfDayRange(
