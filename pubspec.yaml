@@ -80,7 +80,12 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
-
+  fonts:
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Regular.ttf # You'll need to download and place these font files
+        - asset: assets/fonts/Montserrat-Bold.ttf
+          weight: 700
   # To add assets to your application, add an assets section, like this:
   assets:
      - assets/NIT_Andhra_Pradesh.png

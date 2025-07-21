@@ -42,7 +42,7 @@ class LoginPage extends StatelessWidget {
     if (!context.mounted) return;
 
     if (role == 'regular') {
-      if (!data!.containsKey('Sex')) {
+      if (!data!.containsKey('mess')) {
         // Show popup to select sex, wait for user to choose
         final selectedSex = await showDialog<int>(
           context: context,
@@ -81,15 +81,15 @@ class LoginPage extends StatelessWidget {
         );
 
         if (selectedSex != null) {
-          await userRef.update({'Sex': selectedSex});
+          await userRef.update({'mess': selectedSex});
           // Small delay to ensure Firestore update is done before navigation
           await Future.delayed(const Duration(milliseconds: 500));
         }
       }
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const StudentDashboard()));
     } else if (role == 'guest') {
-      if (!data!.containsKey('Sex')) {
-        await userRef.update({'Sex': 1});
+      if (!data!.containsKey('mess')) {
+        await userRef.update({'mess': 1});
         await Future.delayed(const Duration(milliseconds: 500));
       }
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const StudentDashboard()));

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/cloudinary_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../utils/meal_utils.dart';
 
 class AddExtraMenuPage extends StatefulWidget {
   const AddExtraMenuPage({super.key});
@@ -21,7 +23,7 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
   File? _imageFile;
   String? _uploadedImageUrl;
   DateTime _selectedDate = DateTime.now();
-
+  User? user = FirebaseAuth.instance.currentUser;
   final picker = ImagePicker();
   int? selectedGender; // 1 = Boys, 0 = Girls
   String selectedMeal = '';
@@ -107,23 +109,7 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
                 validator: (value) =>
                     value == null || value.isEmpty ? 'Enter description' : null,
               ),
-              const SizedBox(height: 16),
-              const Text("Hostel", style: TextStyle(fontWeight: FontWeight.bold)),
-              Wrap(
-                spacing: 10,
-                children: [
-                  ChoiceChip(
-                    label: const Text("Boys"),
-                    selected: selectedGender == 1,
-                    onSelected: (_) => setState(() => selectedGender = 1),
-                  ),
-                  ChoiceChip(
-                    label: const Text("Girls"),
-                    selected: selectedGender == 0,
-                    onSelected: (_) => setState(() => selectedGender = 0),
-                  ),
-                ],
-              ),
+              
               const SizedBox(height: 16),
               const Text("Meal Type", style: TextStyle(fontWeight: FontWeight.bold)),
               Wrap(
@@ -237,7 +223,11 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
                     final status = now.isAfter(startTime) && now.isBefore(endTime)
                         ? 'active'
                         : 'inactive';
-
+                    final doc=await FirebaseFirestore.instance.collection('users').doc(user?.uid).get();
+                    final info = doc.data();
+                    if (info != null && info.containsKey('mess')) {
+                      selectedGender = info['mess'];
+                    }
                     await FirebaseFirestore.instance
                         .collection('extra_menu')
                         .doc(docId)
@@ -272,42 +262,3 @@ class _AddExtraMenuPageState extends State<AddExtraMenuPage> {
   }
 }
 
-class TimeOfDayRange {
-  final TimeOfDay start;
-  final TimeOfDay end;
-  TimeOfDayRange({required this.start, required this.end});
-}
-
-Map<String, int> getMealCodes() {
-  return {
-    'Breakfast': 1,
-    'Lunch': 2,
-    'Snacks': 3,
-    'Dinner': 4,
-  };
-}
-
-Map<String, TimeOfDayRange> getMealTimings() {
-  return {
-    'Breakfast': TimeOfDayRange(
-      start: const TimeOfDay(hour: 5, minute: 0),
-      end: const TimeOfDay(hour: 10, minute: 0),
-    ),
-    'Lunch': TimeOfDayRange(
-      start: const TimeOfDay(hour: 10, minute: 30),
-      end: const TimeOfDay(hour: 15, minute: 30),
-    ),
-    'Snacks': TimeOfDayRange(
-      start: const TimeOfDay(hour: 15, minute: 30),
-      end: const TimeOfDay(hour: 17, minute: 45),
-    ),
-    'Dinner': TimeOfDayRange(
-      start: const TimeOfDay(hour: 18, minute: 15),
-      end: const TimeOfDay(hour: 23, minute: 50),
-    ),
-  };
-}
-
-TimeOfDayRange getMealTimeRange(String meal) {
-  return getMealTimings()[meal]!;
-}

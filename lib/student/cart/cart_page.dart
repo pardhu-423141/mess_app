@@ -133,7 +133,7 @@ class _CartPageState extends State<CartPage> with WidgetsBindingObserver {
     
 
     final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-    final gender = userDoc.data()?['sex'] == 'male' ? '1' : '0';
+    final gender = userDoc.data()?['mess'] == 'male' ? '1' : '0';
 
     final nowTime = TimeOfDay.now();
     String? mealName;

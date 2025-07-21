@@ -26,7 +26,6 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Manager Dashboard')),
       body: pages[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
